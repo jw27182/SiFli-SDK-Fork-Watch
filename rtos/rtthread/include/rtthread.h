@@ -537,6 +537,11 @@ void rt_interrupt_leave(void);
  */
 rt_uint8_t rt_interrupt_get_nest(void);
 
+/*
+ * clear the interrupt nest, this function is only used by core dump
+ */
+void rt_interrupt_nest_clear(void);
+
 #ifdef RT_USING_HOOK
 void rt_interrupt_enter_sethook(void (*hook)(void));
 void rt_interrupt_leave_sethook(void (*hook)(void));
