@@ -1049,6 +1049,77 @@ __ROM_USED rt_err_t rt_mem_restore(void *instance, rt_uint8_t *buf, rt_uint32_t 
     return RT_EOK;
 }
 
+__ROM_USED rt_err_t rt_mem_dump(rt_mem_dump_cb_t dump_cb, void *user_data, rt_uint32_t *dump_size, rt_uint32_t *actual_size)
+{
+    rt_uint32_t copy_size;
+    rt_uint32_t ret_size;
+
+#ifdef RT_MEM_BACKUP_OPT
+    struct heap_mem *block;
+    rt_uint32_t len;
+#endif /* RT_MEM_BACKUP_OPT */
+
+    if (!dump_cb)
+    {
+        return RT_ERROR;
+    }
+
+#ifndef RT_MEM_BACKUP_OPT
+    copy_size = rt_mem_used_size();
+
+    ret_size = dump_cb((rt_uint32_t)heap_ptr, copy_size, user_data, actual_size);
+    if (dump_size)
+    {
+        *dump_size = ret_size;
+    }
+    if (ret_size < copy_size)
+    {
+        return RT_EFULL;
+    }
+#else
+
+    block = heap_ptr;
+    copy_size = 0;
+    if (dump_size)
+    {
+        *dump_size = 0;
+    }
+    while (block < heap_end)
+    {
+        if (block->used & 0x01)  //0x1ea1
+        {
+            /* copy header and data */
+            len = (rt_uint32_t)block->next - (rt_uint32_t)block;
+        }
+        else
+        {
+            /* only copy header */
+            len = SIZEOF_STRUCT_MEM;
+        }
+
+        ret_size = dump_cb((rt_uint32_t)block, len, user_data, actual_size);
+        if (actual_size)
+        {
+            copy_size += *actual_size;
+            *actual_size = copy_size;
+        }
+        if (dump_size)
+        {
+            *dump_size += ret_size;
+
+        }
+        if (ret_size < len)
+        {
+            return RT_EFULL;
+        }
+
+        block = block->next;
+    }
+#endif
+
+    return RT_EOK;
+
+}
 __ROM_USED rt_uint32_t rt_mem_base(void)
 {
     return (rt_uint32_t)heap_ptr;

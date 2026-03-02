@@ -293,6 +293,31 @@ rt_err_t rt_mem_backup(rt_uint8_t *buf, rt_uint32_t max_size, rt_uint32_t *used_
 rt_err_t rt_mem_restore(void *instance, rt_uint8_t *buf, rt_uint32_t size, rt_compressor_cb_t decompressor_cb);
 rt_uint32_t rt_mem_base(void);
 
+/**
+ * @brief dump memory callback type
+ *
+ * @param addr the starting address of the memory to dump
+ * @param size the size of the memory to dump
+ * @param user_data user data
+ * @param actual_size pointer to the actual size of the dumped memory, including header size
+ *
+ * @return size of dumped data excluding any header, to including header size, use actual_size
+ */
+typedef rt_uint32_t (*rt_mem_dump_cb_t)(rt_uint32_t addr, rt_uint32_t size, void *user_data, rt_uint32_t *actual_size);
+
+
+/**
+ * @brief dump small heap memory
+ *
+ * @param dump_cb the callback function to dump memory, it will be called multiple times until all memory is dumped
+ * @param user_data user data, it will be passed to dump_cb when called
+ * @param dump_size pointer to the size of the dumped memory, excluding header size
+ * @param actual_size pointer to the actual size of the dumped memory, including header size
+ *
+ * @return RT_EOK on success, RT_EFULL if the dump buffer is full, other error code on failure
+ */
+rt_err_t rt_mem_dump(rt_mem_dump_cb_t dump_cb, void *user_data, rt_uint32_t *dump_size, rt_uint32_t *actual_size);
+
 
 #ifdef RT_USING_SLAB
 void *rt_page_alloc(rt_size_t npages);
