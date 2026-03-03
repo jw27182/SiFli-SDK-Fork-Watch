@@ -12,7 +12,7 @@
 #include "lv_ext_resource_manager.h"
 #include "lvgl.h"
 #include "lvsf_comp.h"
-#include "aht20.h"
+// #include "aht20.h"
 
 static float temp = 0.0, humi = 0.0;
 static lv_obj_t* label = NULL;
@@ -20,9 +20,9 @@ static lv_timer_t* frush_timer = NULL;
 
 static void timer_callback(lv_timer_t* timer) {
     static char buf[32];
-    AHT20_StartMeasure();
-    rt_thread_mdelay(AHT20_MEASURE_TIME);
-    AHT20_GetMeasureResult(&temp, &humi);
+    // AHT20_StartMeasure();
+    // rt_thread_mdelay(AHT20_MEASURE_TIME);
+    // AHT20_GetMeasureResult(&temp, &humi);
     rt_sprintf(buf, "温度：%.2f  湿度：%.2f", temp, humi);
     if (label) lv_label_set_text(label, buf);
 }
@@ -39,8 +39,8 @@ static void create_ui(void) {
 }
 
 static void on_start(void) {
-    AHT20_Init();
-    AHT20_Calibrate();
+    // AHT20_Init();
+    // AHT20_Calibrate();
 
     create_ui();
 

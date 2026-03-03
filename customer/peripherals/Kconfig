@@ -55,6 +55,10 @@ config TSC_USING_CST918_0x15
     bool
     default n
 
+config TSC_USING_CST9217
+    bool
+    default n
+
 config TSC_USING_BL7163      
     bool
     default n

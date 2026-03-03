@@ -364,7 +364,7 @@ if BSP_USING_BUILTIN_LCD
         config LCD_USING_TFT_CO5300
             bool "1.85 rect QSPI Single-Screen LCD(LCD_1P85_390*450_DevKit_Adapter_V1.0.0)"
             select LCD_USING_CO5300
-            select TSC_USING_FT6146 if BSP_USING_TOUCHD
+            select TSC_USING_CST9217 if BSP_USING_TOUCHD
             select BSP_LCDC_USING_QADSPI
             select LCD_USING_PWM_AS_BACKLIGHT
             if LCD_USING_TFT_CO5300
@@ -525,7 +525,7 @@ if BSP_USING_BUILTIN_LCD
         default 1024 if LCD_USING_HTM_H070A20_RGB_A01
         default 240 if  LCD_USING_TFT_GC9A01A
         default 720 if LCD_USING_TFT_NV3052C
-        default 390 if LCD_USING_TFT_CO5300
+        default 410 if LCD_USING_TFT_CO5300
         default 780 if LCD_USING_TFT_CO5300_DUAL
         default 410 if AM196Q410502LK_196_410x502
         default 368 if AM178Q368448LK_178_368x448
@@ -576,7 +576,7 @@ if BSP_USING_BUILTIN_LCD
         default 240 if LCD_USING_TFT_GC9A01A
         default 1280 if LCD_USING_TFT_H080A11HDIFT4C30_V0_1
         default 720 if LCD_USING_TFT_NV3052C
-        default 450 if LCD_USING_TFT_CO5300
+        default 502 if LCD_USING_TFT_CO5300
         default 450 if LCD_USING_TFT_CO5300_DUAL
         default 502 if AM196Q410502LK_196_410x502
         default 448 if AM178Q368448LK_178_368x448
@@ -626,7 +626,7 @@ if BSP_USING_BUILTIN_LCD
         default 240 if LCD_USING_TFT_GC9A01A
         default 235 if LCD_USING_TFT_H080A11HDIFT4C30_V0_1
         default 315 if LCD_USING_TFT_NV3052C
-        default 300 if LCD_USING_TFT_CO5300
+        default 315 if LCD_USING_TFT_CO5300
         default 300 if LCD_USING_TFT_CO5300_DUAL
         default 300 if AM196Q410502LK_196_410x502
         default 300 if AM178Q368448LK_178_368x448

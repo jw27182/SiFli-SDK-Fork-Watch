@@ -38,7 +38,7 @@
     #define ROW_OFFSET (0)
 #else
     #define ROW_OFFSET  (0x00)
-    #define COL_OFFSET  (0x00)
+    #define COL_OFFSET  (0x17)
 #endif
 
 /**
