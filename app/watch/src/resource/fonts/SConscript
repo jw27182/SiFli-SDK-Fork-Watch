@@ -1,0 +1,24 @@
+# for module compiling
+import os
+from building import *
+import rtconfig
+
+cwd = GetCurrentDir()
+list = os.listdir(cwd)
+
+CPPDEFINES = []
+
+font_name = 'MiSans_Normal_Tiny'
+
+CPPDEFINES += ["FREETYPE_FONT_NAME={}".format(font_name)]
+
+objs = Glob('freetype/{}.ttf'.format(font_name))
+
+objs = Env.FontFile(objs)
+
+if GetOption('no_cc'):
+    objs = []
+
+objs = DefineGroup('resource', objs, depend = ['PKG_USING_LITTLEVGL2RTT'], CPPDEFINES = CPPDEFINES)  
+
+Return ('objs')

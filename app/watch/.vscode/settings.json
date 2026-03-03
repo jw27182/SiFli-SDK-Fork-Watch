@@ -1,0 +1,5 @@
+{
+    "clangd.arguments": [
+        "--compile-commands-dir=${workspaceFolder}/project/build_sf32lb52-watch_hcpu"
+    ]
+}
