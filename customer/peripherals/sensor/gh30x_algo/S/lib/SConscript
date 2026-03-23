@@ -1,0 +1,9 @@
+from building import *
+
+cwd = GetCurrentDir()
+src = Glob('*.c')
+path = [cwd]
+lib = [':cortexM33_arm-none-eabi-gcc103-o2-hard_common.a', ':cortexM33_arm-none-eabi-gcc103-o2-hard_hba.a', ':cortexM33_arm-none-eabi-gcc921_hrv.a', ':cortexM33_arm-none-eabi-gcc921_nadt.a', ':cortexM33_arm-none-eabi-gcc103-o2-hard_spo2.a']
+group = DefineGroup('Drivers', src, depend = ['HR_USING_GH3018'], LIBS = lib, CPPPATH = path, LIBPATH = path)
+
+Return('group')

@@ -23,6 +23,27 @@ menuconfig SENSOR_USING_HR
                 int "Heart rate reset pin"
                 default 78
             endif   
+        menuconfig HR_USING_GH3018
+            bool "Enable HR Sensor GH3018"
+            select RT_USING_SENSOR
+            default n
+            if HR_USING_GH3018
+                config GH3018_I2C_BUS
+                string "GH3018 I2C bus name"
+                default "i2c5"
+                config HR_MODEL_NAME
+                string "GH3018 model name"
+                default "gh3018"
+				config GH3018_POW_PIN
+                int "Heart rate power pin"
+                default 0
+                config GH3018_INT_BIT
+                int "Heart rate ready int pin"
+                default 114
+                config GH3018_RST_PIN
+                int "Heart rate reset pin"
+                default 115
+            endif		
         menuconfig HR_USING_HRS3300
             bool "HRS3300"
             select RT_USING_SENSOR
