@@ -234,7 +234,7 @@ rt_err_t aw32001_control(rt_charge_device_t *charge, int cmd, void *args)
             break;
         }
 
-        rt_kprintf("aw32001_status = %d, fault = %d;\n", aw32001_status, aw32001_fault);
+        // rt_kprintf("aw32001_status = %d, fault = %d;\n", aw32001_status, aw32001_fault);
         if (aw32001_fault & 0x08)
         {
             aw32001_charge_enable(0);

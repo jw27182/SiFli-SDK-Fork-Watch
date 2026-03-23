@@ -232,7 +232,7 @@ uint8_t battery_calculator_get_percent(battery_calculator_t *calculator, uint32_
 
     /* Get the charging status */
     status = battery_get_charging_status();
-    LOG_D("Current status: %s", (status == BATTERY_CHARGER_STATUS_CHARGING) ? "Charging" : "Discharging");
+    // LOG_D("Current status: %s", (status == BATTERY_CHARGER_STATUS_CHARGING) ? "Charging" : "Discharging");
 
     /* Primary filter: state-based filtering */
     filtered_voltage = _battery_voltage_filter(calculator, voltage, status);
