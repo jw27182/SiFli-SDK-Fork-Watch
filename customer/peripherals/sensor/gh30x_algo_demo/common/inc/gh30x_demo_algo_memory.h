@@ -251,8 +251,8 @@
 #define GH30X_ALGORITHMS_MEMORY GH30X_ALGORITHMS_MEMORY_(4)
 #endif
 
-//final size
-#define GH30X_ALGORITHMS_MEMORY_SIZE_FINAL (((GU32)((GH30X_ALGORITHMS_MEMORY + 3) / 4)) * 4)
+// final size（+8KiB 冗余：HR+FIFO+HBA 峰值在部分板卡上超过表算值，过小会触发 pool failure 继而 HardFault）
+#define GH30X_ALGORITHMS_MEMORY_SIZE_FINAL (((GU32)((GH30X_ALGORITHMS_MEMORY + 8192 + 3) / 4)) * 4)
 
 /**
  * @fn     GS8 GH30X_AlgoMemConfig( GU32 unMemSize)

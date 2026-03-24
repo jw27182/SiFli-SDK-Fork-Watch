@@ -231,6 +231,10 @@ int cmd_hbd(int argc, char *argv[])
         {
             print_memory_usage();
         }
+        else if (strcmp(argv[1], "-peek") == 0)
+        {
+            LOG_I("cached HR bpm: %u\n", (unsigned)gh3018_get_hr());
+        }
         else
         {
             LOG_I("Invalid parameter\n");

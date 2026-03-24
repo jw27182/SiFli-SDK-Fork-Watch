@@ -82,12 +82,16 @@ void GH30X_AdtAlgorithmResultReport(STGh30xAlgoResult *pstAlgoResult, GU32 lubFr
 void GH30X_HrAlgorithmResultReport(STGh30xAlgoResult *pstAlgoResult, GU32 lubFrameId)
 {
 #if (__USE_GOODIX_HR_ALGORITHM__)
-
-    /* code implement by user */
-//    GH30X_ALGO_LOG_PARAM("[HR]hba=%d, valid_score=%d, hba_snr=%d, valid_level=%d, hba_acc_info=%d, hba_acc_scence=%d\r\n", \
-//                pstAlgoResult->snResult[0], pstAlgoResult->snResult[1], pstAlgoResult->snResult[2], pstAlgoResult->snResult[3], \
-//                pstAlgoResult->snResult[4], pstAlgoResult->snResult[5]);
-//    GOODIX_PLANFROM_HR_RESULT_REPORT_ENTITY();
+    /* Demo 路径 GH30xHrAlgoExe 在 __GET_RAWDATA_WITHOUT_ALGO_HANDLE=1 时走此处，不经 gh3011_algo_calculate_hook */
+    extern void gh3018_set_hr(uint32_t hr);
+    if (pstAlgoResult != 0 && pstAlgoResult->uchUpdateFlag != 0)
+    {
+        GS32 bpm = pstAlgoResult->snResult[0];
+        if (bpm > 0 && bpm <= 240)
+        {
+            gh3018_set_hr((uint32_t)bpm);
+        }
+    }
 #endif
 }
 

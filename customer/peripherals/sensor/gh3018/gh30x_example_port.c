@@ -27,7 +27,8 @@ static struct rt_i2c_bus_device *gh3018_i2cbus = NULL;
 static struct rt_semaphore gh3018_int_sem;
 #endif
 
-#define THREAD_STACK_SIZE 6144
+/* Goodix HBA 在 FIFO 回调路径上栈消耗大，过小会踩坏算法静态内存池触发 MEMORY ERROR */
+#define THREAD_STACK_SIZE (16 * 1024)
 #define THREAD_PRIORITY 7
 #define THREAD_TIMESLICE RT_THREAD_TICK_DEFAULT
 
@@ -1011,9 +1012,10 @@ uint32_t gh3018_get_hr(void)
 
 void gh3018_set_hr(uint32_t hr)
 {
-    if (hr != loc_hb_value)
+    if (hr != (uint32_t)loc_hb_value)
     {
-        loc_hb_value = hr;
+        loc_hb_value = (uint8_t)hr;
+        LOG_I("HR bpm: %u (valid when sensor worn & signal OK)\r\n", (unsigned)hr);
     }
 }
 

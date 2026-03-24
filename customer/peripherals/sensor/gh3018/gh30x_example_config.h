@@ -76,7 +76,7 @@
 /// get rawdata buffer length, max 255 (use heap space)
 #define __GET_RAWDATA_BUF_LEN__             (__GET_RAWDATA_FIFO_THR_CNT_CONFIG__ + 5)
 
-/// get rawdata but do not handle algo in hr_only and hr_spo2 mode
+/// 为 1：与原厂示例一致，避免 FIFO 路径 HardFault；HR 改在 gh3011_algo_calculate_hook 成功分支同步
 #define __GET_RAWDATA_WITHOUT_ALGO_HANDLE   (1)
 
 

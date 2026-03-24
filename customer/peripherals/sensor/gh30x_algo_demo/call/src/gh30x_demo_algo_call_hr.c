@@ -136,8 +136,26 @@ GS8 GH30xHrAlgoExe(const STGh30xFrameInfo * const pstFrameInfo)
             pstFrameInfo->pstAlgoResult->snResult[4] = (GS32)stResult.hba_acc_info;
             pstFrameInfo->pstAlgoResult->snResult[5] = (GS32)stResult.hba_acc_scence;
 
-            GH30X_ALGO_LOG_PARAM("[%s]hr = %d,UpdateFlag = %d\r\n",__FUNCTION__,\
-                (int)pstFrameInfo->pstAlgoResult->snResult[0],(int)pstFrameInfo->pstAlgoResult->uchUpdateFlag);
+            // 日志详细打印: 心率(HR), 更新标志(UpdateFlag), 置信度得分(valid_score),
+            // 信噪比(hba_snr), 有效等级(valid_level), 加速度信息(hba_acc_info), 场景信息(hba_acc_scence)
+            GH30X_ALGO_LOG_PARAM(
+                "[%s] hr = %d"         // 心率值 bpm
+                ", UpdateFlag = %d"   // 结果更新标志
+                ", valid_score = %d"  // 置信度得分
+                ", SNR = %d"          // 信噪比
+                ", valid_level = %d"  // 有效等级
+                ", hba_acc_info = %d" // 加速度信息
+                ", hba_acc_scence = %d" // 场景信息
+                "\r\n",
+                __FUNCTION__,
+                (int)pstFrameInfo->pstAlgoResult->snResult[0],    // hr
+                (int)pstFrameInfo->pstAlgoResult->uchUpdateFlag,  // UpdateFlag
+                (int)pstFrameInfo->pstAlgoResult->snResult[1],    // valid_score
+                (int)pstFrameInfo->pstAlgoResult->snResult[2],    // SNR
+                (int)pstFrameInfo->pstAlgoResult->snResult[3],    // valid_level
+                (int)pstFrameInfo->pstAlgoResult->snResult[4],    // hba_acc_info
+                (int)pstFrameInfo->pstAlgoResult->snResult[5]     // hba_acc_scence
+            );
 
             pstFrameInfo->pstAlgoResult->usResultBit = 0x3F;
             pstFrameInfo->pstAlgoResult->uchResultNum = GH30x_BitCount(pstFrameInfo->pstAlgoResult->usResultBit);

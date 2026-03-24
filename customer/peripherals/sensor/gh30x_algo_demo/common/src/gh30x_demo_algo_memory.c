@@ -18,7 +18,7 @@
 
 #if (__GOODIX_ALGO_CALL_MODE__)
 #if __USER_DYNAMIC_ALGO_MEM_EN__
-GU32 *g_punGh30xAlgoMemBufferPointer = 0;1
+GU32 *g_punGh30xAlgoMemBufferPointer = 0;
 #else
 GU32 g_punGh30xAlgoMemBuffer[GH30X_ALGORITHMS_MEMORY_SIZE_FINAL / 4] = {0};
 GU32 *g_punGh30xAlgoMemBufferPointer = g_punGh30xAlgoMemBuffer;
@@ -39,14 +39,31 @@ void* GH30X_MemMalloc(GS32 nSize)
 
 extern void print_memory_usage(void);
 #include "rtthread.h"
+
+/*
+ * 池已损坏或耗尽时库会调用此入口；若直接返回，后续 malloc 可能空指针导致 HardFault。
+ * 仅记录一次后永久阻塞本线程，避免继续跑算法。
+ */
+void Gh30xPoolIsNotEnough(void)
+{
+    static volatile int s_logged;
+
+    if (!s_logged)
+    {
+        s_logged = 1;
+        print_memory_usage();
+        GH30X_ALGO_LOG_PARAM(
+            "algo mem pool failure: thread gh3018 halted (power-cycle or reboot)\r\n");
+    }
+    while (1)
+    {
+        rt_thread_mdelay(60000);
+    }
+}
+
 void Gh3x2xPoolIsNotEnough(void)
 {
-    while(1)
-    {
-        print_memory_usage();
-        rt_thread_mdelay(1000);
-        GH30X_ALGO_LOG_PARAM("MEMORY ERROR!!!PLEASE RESET HARDWARE!!!\n");
-    }
+    Gh30xPoolIsNotEnough();
 }
 
 #if (__GOODIX_ALGO_CALL_MODE__)

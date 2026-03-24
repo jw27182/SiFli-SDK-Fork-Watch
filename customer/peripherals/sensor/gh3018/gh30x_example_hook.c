@@ -14,6 +14,8 @@
 #include "gh30x_demo_algo_call.h"
 #include "gh30x_demo_algo_config.h"
 
+extern void gh3018_set_hr(uint32_t hr);
+
 #if (__ALGO_LOG_CONFIG__)
     #define EXAMPLE_DEBUG_LOG_L1_HOOK EXAMPLE_DEBUG_LOG_L1
 #else
@@ -477,6 +479,7 @@ void gh3011_algo_calculate_hook(EMFunctionID function_id,
             algo_result->snResult[3] = (GS32)(stHbaResult.hba_snr * 100);
             algo_result->snResult[4] = (GS32)stHbaResult.valid_score;
             algo_result->snResult[5] = (GS32)stHbaResult.hba_acc_info;
+            gh3018_set_hr((uint32_t)stHbaResult.hba_out);
         }
         break;
 #endif
