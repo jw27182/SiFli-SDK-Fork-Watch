@@ -190,59 +190,88 @@ void print_memory_usage(void)
     rt_kprintf("Maximum used memory: %d bytes\n", max_used);
 }
 
+/* 打印 hbd 子命令的英文说明（与下方中文注释一一对应） */
+static void print_hbd_cmd_help(void)
+{
+    rt_kprintf("hbd shell commands (GH3018 / GH30x):\n");
+    rt_kprintf("  -open   Initialize the sensor stack (gh30x_module_init). Call before starting HR/SpO2.\n");
+    rt_kprintf("  -hb     Heart-rate mode (HR only): full switch — mutex, HBD FIFO off/on, stop, start HR.\n");
+    rt_kprintf("  -spo    SpO2 mode (blood oxygen only): mutex, stop, start SPO2 (set_gh3018_spo2_mode).\n");
+    rt_kprintf("  -hb2    Same measurement as -hb (HR only), minimal path: only gh30x_module_start(HR).\n");
+    rt_kprintf("  -spo2   Same measurement as -spo (SpO2 only), minimal path: only gh30x_module_start(SPO2).\n");
+    rt_kprintf("  -stop   Stop all GH30x module activity (gh30x_module_stop).\n");
+    rt_kprintf("  -reset  Placeholder; branch is empty (no reset call wired yet).\n");
+    rt_kprintf("  -mem    Print RT-Thread heap: total, used, and peak used bytes.\n");
+    rt_kprintf("  -peek   Print cached heart-rate BPM from gh3018_get_hr().\n");
+    rt_kprintf("  -help   Show this help (--help also accepted).\n");
+}
+
 int cmd_hbd(int argc, char *argv[])
 {
     if (argc > 1)
     {
-        if (strcmp(argv[1], "-open") == 0)
+        if (strcmp(argv[1], "-help") == 0 || strcmp(argv[1], "--help") == 0)
+        {
+            print_hbd_cmd_help();
+        }
+        /* -open：初始化 GH3018/GH30x 模组（驱动与算法等），一般要先于测心率/血氧 */
+        else if (strcmp(argv[1], "-open") == 0)
         {
             int res = init_gh3018_sensor();
             LOG_I("Initial gh3018 %d\n", res);
         }
+        /* -hb：心率模式；完整切换（互斥锁 + 关/开 HBD FIFO + stop/start HR），与其它任务共用 API 时更安全 */
         else if (strcmp(argv[1], "-hb") == 0)
         {
             set_gh3018_hr_mode();
             LOG_I("start HB\n");
         }
+        /* -spo：血氧模式；加锁后 stop/start SPO2，与 -hb 一样是「封装好的」启动方式 */
         else if (strcmp(argv[1], "-spo") == 0)
         {
             set_gh3018_spo2_mode();
             LOG_I("start spo2\n");
         }
+        /* -hb2：仍是心率模式（与 -hb 同一种测量），仅直接 gh30x_module_start(HR)，无 FIFO/锁，适合快速调试 */
         else if (strcmp(argv[1], "-hb2") == 0)
         {
             gh30x_module_start(GH30X_FUNCTION_HR);
             LOG_I("start HB without ADT\n");
         }
+        /* -spo2：仍是血氧模式（与 -spo 同一种测量），仅直接 gh30x_module_start(SPO2)，无互斥锁 */
         else if (strcmp(argv[1], "-spo2") == 0)
         {
             gh30x_module_start(GH30X_FUNCTION_SPO2);
             LOG_I("start spo2 without ADT\n");
         }
+        /* -stop：停止 GH30x 模组所有功能 */
         else if (strcmp(argv[1], "-stop") == 0)
         {
             gh30x_module_stop();
             LOG_I("stop gh3018\n");
         }
+        /* -reset：预留，当前分支无实现 */
         else if (strcmp(argv[1], "-reset") == 0)
         {
         }
+        /* -mem：打印 RT-Thread 堆内存总量/已用/峰值 */
         else if (strcmp(argv[1], "-mem") == 0)
         {
             print_memory_usage();
         }
+        /* -peek：打印驱动里缓存的心率 BPM（gh3018_get_hr） */
         else if (strcmp(argv[1], "-peek") == 0)
         {
             LOG_I("cached HR bpm: %u\n", (unsigned)gh3018_get_hr());
         }
         else
         {
-            LOG_I("Invalid parameter\n");
+            LOG_I("Invalid parameter (try hbd -help)\n");
         }
     }
     else
     {
-        LOG_I("Invalid parameter\n");
+        LOG_I("Invalid parameter (try hbd -help)\n");
     }
     return 0;
 }

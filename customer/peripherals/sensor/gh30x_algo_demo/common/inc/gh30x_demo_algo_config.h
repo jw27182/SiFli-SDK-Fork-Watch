@@ -43,7 +43,7 @@
 
 /* algorithm log */
 #ifdef GOODIX_DEMO_PLANFORM
-#define __ALGO_LOG_CONFIG__                    (1)
+#define __ALGO_LOG_CONFIG__                    (2)
 #else
 #define __ALGO_LOG_CONFIG__                    (2)
 #endif

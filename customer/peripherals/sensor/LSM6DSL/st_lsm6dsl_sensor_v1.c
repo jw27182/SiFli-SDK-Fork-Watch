@@ -1,5 +1,6 @@
 
 #include "st_lsm6dsl_sensor_v1.h"
+#include <stdlib.h>
 
 #define DBG_ENABLE
 #define DBG_LEVEL DBG_LOG
@@ -358,8 +359,8 @@ int rt_hw_lsm6dsl_init(const char *name, struct rt_sensor_config *cfg)
 
         sensor_acce->info.type       = RT_SENSOR_CLASS_ACCE;
         sensor_acce->info.vendor     = RT_SENSOR_VENDOR_STM;
-        sensor_acce->info.model      = "lsm6dsl_acc";
-        sensor_acce->info.unit       = RT_SENSOR_UNIT_MGAUSS;
+        sensor_acce->info.model      = "lsm6dsl_acce";
+        sensor_acce->info.unit       = RT_SENSOR_UNIT_MG;
         sensor_acce->info.intf_type  = RT_SENSOR_INTF_I2C;
         sensor_acce->info.range_max  = SENSOR_ACC_RANGE_16G;
         sensor_acce->info.range_min  = SENSOR_ACC_RANGE_2G;
@@ -386,7 +387,7 @@ int rt_hw_lsm6dsl_init(const char *name, struct rt_sensor_config *cfg)
         sensor_gyro->info.type       = RT_SENSOR_CLASS_GYRO;
         sensor_gyro->info.vendor     = RT_SENSOR_VENDOR_STM;
         sensor_gyro->info.model      = "lsm6dsl_gyro";
-        sensor_gyro->info.unit       = RT_SENSOR_UNIT_MG;
+        sensor_gyro->info.unit       = RT_SENSOR_UNIT_MDPS;
         sensor_gyro->info.intf_type  = RT_SENSOR_INTF_I2C;
         sensor_gyro->info.range_max  = SENSOR_ACC_RANGE_16G;
         sensor_gyro->info.range_min  = SENSOR_ACC_RANGE_2G;
@@ -447,3 +448,69 @@ __exit:
         rt_free(sensor_step);
     return -RT_ERROR;
 }
+
+static void lsm6dsl_test(int argc, char **argv)
+{
+    rt_device_t acce_sensor_dev = rt_device_find("acce_lsm6dsl");
+    rt_device_t gyro_sensor_dev = rt_device_find("gyro_lsm6dsl");
+    rt_device_t step_sensor_dev = rt_device_find("step_lsm6dsl");
+    rt_sensor_t sa, sg;
+    int count;
+    int i;
+
+    if (argc < 2)
+    {
+        rt_kprintf("Usage: lsm6dsl_test <count>\n");
+        return;
+    }
+    count = atoi(argv[1]);
+    if (acce_sensor_dev == RT_NULL || gyro_sensor_dev == RT_NULL || step_sensor_dev == RT_NULL)
+    {
+        rt_kprintf("find lsm6dsl sensor device failed!\n");
+        return;
+    }
+    sa = (rt_sensor_t)acce_sensor_dev;
+    sg = (rt_sensor_t)gyro_sensor_dev;
+    rt_kprintf("[lsm6dsl diag] find acce: object.name=%.*s info.type=%u model=%s ptr=%p\n",
+               RT_NAME_MAX, sa->parent.parent.name, (unsigned)sa->info.type,
+               sa->info.model ? sa->info.model : "?", sa);
+    rt_kprintf("[lsm6dsl diag] find gyro: object.name=%.*s info.type=%u model=%s ptr=%p\n",
+               RT_NAME_MAX, sg->parent.parent.name, (unsigned)sg->info.type,
+               sg->info.model ? sg->info.model : "?", sg);
+    if (sa->info.type != RT_SENSOR_CLASS_ACCE || sg->info.type != RT_SENSOR_CLASS_GYRO)
+    {
+        rt_kprintf("[lsm6dsl diag] WARN: type mismatch (expect acce=1 gyro=2); check RT_NAME_MAX collision\n");
+    }
+    if (sa == sg)
+    {
+        rt_kprintf("[lsm6dsl diag] ERR: acce and gyro device pointers are equal!\n");
+        return;
+    }
+
+    if (rt_device_open(acce_sensor_dev, RT_DEVICE_FLAG_RDONLY) != RT_EOK)
+        rt_kprintf("open acce_sensor_dev failed!\n");
+    if (rt_device_open(gyro_sensor_dev, RT_DEVICE_FLAG_RDONLY) != RT_EOK)
+        rt_kprintf("open gyro_sensor_dev failed!\n");
+    if (rt_device_open(step_sensor_dev, RT_DEVICE_FLAG_RDONLY) != RT_EOK)
+        rt_kprintf("open step_sensor_dev failed!\n");
+
+    for (i = 0; i <= count; i++)
+    {
+        struct rt_sensor_data sensor_data;
+
+        rt_device_read(acce_sensor_dev, 0, &sensor_data, 1);
+        rt_kprintf("acce line: type=%u xyz=%d %d %d | ", (unsigned)sensor_data.type,
+                   sensor_data.data.acce.x, sensor_data.data.acce.y, sensor_data.data.acce.z);
+        rt_device_read(gyro_sensor_dev, 0, &sensor_data, 1);
+        rt_kprintf("gyro line: type=%u xyz=%d %d %d | ", (unsigned)sensor_data.type,
+                   sensor_data.data.gyro.x, sensor_data.data.gyro.y, sensor_data.data.gyro.z);
+        rt_device_read(step_sensor_dev, 0, &sensor_data, 1);
+        rt_kprintf("step: %d [%d/%d]\n", sensor_data.data.step, i, count);
+        rt_thread_mdelay(100);
+    }
+    rt_device_close(acce_sensor_dev);
+    rt_device_close(gyro_sensor_dev);
+    rt_device_close(step_sensor_dev);
+}
+
+MSH_CMD_EXPORT(lsm6dsl_test, test LSM6DSL sensor (diag: types+raw regs));
