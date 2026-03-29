@@ -62,6 +62,8 @@ struct battery_calculator
 };
 typedef struct battery_calculator battery_calculator_t;
 
+extern battery_calculator_t battery_calc;
+
 /**
  * @brief Initialize battery calculator.
  *

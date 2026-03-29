@@ -25,7 +25,6 @@
 
 #define TIME_SCALE 200 // 200msºÏ≤È“ª¥ŒRTC
 
-extern battery_calculator_t battery_calc;
 static lv_timer_t *frush_timer = NULL;
 static rt_device_t battery_device;
 static char buf[16];

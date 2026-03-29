@@ -1,4 +1,5 @@
 #include "battery_calculator.h"
+#include <rtthread.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdlib.h>
@@ -320,3 +321,26 @@ uint8_t battery_calculator_get_percent(battery_calculator_t *calculator, uint32_
 
     return percent;
 }
+
+battery_calculator_t battery_calc;
+
+static int battery_calculator_device_init(void)
+{
+    static battery_calculator_config_t calc_config = {
+        .charging_table = charging_curve_table,
+        .discharging_table = discharge_curve_table,
+        .charge_filter_threshold = 50,
+        .discharge_filter_threshold = 30,
+        .filter_count = 3,
+        .secondary_filter_enabled = true,
+        .secondary_filter_weight_pre = 90,
+        .secondary_filter_weight_cur = 10
+    };
+
+    calc_config.charging_table_size = charging_curve_table_size;
+    calc_config.discharging_table_size = discharge_curve_table_size;
+
+    return battery_calculator_init(&battery_calc, &calc_config);
+}
+
+INIT_DEVICE_EXPORT(battery_calculator_device_init);
