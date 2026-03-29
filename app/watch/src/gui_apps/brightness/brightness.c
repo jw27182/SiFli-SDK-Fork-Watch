@@ -2,6 +2,7 @@
  *      INCLUDES
  *********************/
 
+#include <math.h>
 #include <rtdevice.h>
 #include <rtthread.h>
 
@@ -25,6 +26,23 @@
 #define BRIGHTNESS_MAX_VAL 100
 #define BRIGHTNESS_RANGE (BRIGHTNESS_MAX_VAL - BRIGHTNESS_MIN_VAL)
 
+/* 自动亮度：EMA 平滑环境光、映射到目标档位、滞回防抖、按步进缓慢逼近目标 */
+#define AUTO_LUX_EMA_SHIFT 4 /* alpha = 1/16，约 16*50ms 时间常数量级 */
+#define AUTO_RAMP_STEP_UP 2    /* 每 tick 最多变亮步进（%） */
+#define AUTO_RAMP_STEP_DOWN 1  /* 变暗更慢，减轻屏光反射引起的来回抖 */
+#define AUTO_TARGET_HYST_UP 5  /* 目标变亮需超过当前滞回目标的最小差值 */
+#define AUTO_TARGET_HYST_DOWN 6
+#define AUTO_TIMER_PERIOD_MS 50
+
+/*
+ * 环境光 -> 背光档位：对数型曲线，锚点 50 lux -> 亮度值 50（即常见意义上的 50%）。
+ * level = anchor_level + gain * ln(lux / anchor_lux)，再限制在 [BRIGHTNESS_MIN_VAL, MAX]。
+ */
+#define AUTO_LUX_LOG_ANCHOR_LUX 50.0f
+#define AUTO_LUX_LOG_ANCHOR_LEVEL 50.0f
+#define AUTO_LUX_LOG_GAIN 15.0f
+#define AUTO_LUX_LOG_INPUT_MIN 1.0f
+
 LV_IMG_DECLARE(img_brightness_icon);
 LV_IMG_DECLARE(img_auto_brightness_icon);
 
@@ -34,6 +52,48 @@ static lv_obj_t* g_brightness_icon = NULL;
 static rt_uint8_t g_brightness_now = 100;
 static rt_bool_t g_auto_brightness = RT_FALSE;
 lv_obj_t *g_auto_brightness_icon = NULL, *g_auto_brightness_btn = NULL;
+
+static rt_bool_t g_auto_lux_filter_reset = RT_FALSE;
+static rt_int32_t g_auto_lux_ema = -1;
+static rt_uint8_t g_auto_hyst_target = BRIGHTNESS_MAX_VAL;
+
+static rt_uint8_t lux_to_brightness_target(rt_int32_t lux) {
+    float x = (float)lux;
+    float t;
+
+    if (x < AUTO_LUX_LOG_INPUT_MIN) x = AUTO_LUX_LOG_INPUT_MIN;
+
+    t = AUTO_LUX_LOG_ANCHOR_LEVEL +
+        AUTO_LUX_LOG_GAIN * logf(x / AUTO_LUX_LOG_ANCHOR_LUX);
+
+    return (rt_uint8_t)clamp((rt_int32_t)(t + 0.5f), BRIGHTNESS_MIN_VAL,
+                             BRIGHTNESS_MAX_VAL);
+}
+
+static rt_uint8_t auto_target_apply_hysteresis(rt_uint8_t raw_target,
+                                                rt_uint8_t hyst_now) {
+    rt_int16_t d = (rt_int16_t)raw_target - (rt_int16_t)hyst_now;
+
+    if (d >= (rt_int16_t)AUTO_TARGET_HYST_UP) return raw_target;
+    if (d <= -(rt_int16_t)AUTO_TARGET_HYST_DOWN) return raw_target;
+    return hyst_now;
+}
+
+static void auto_brightness_ramp_step(rt_uint8_t goal) {
+    rt_int32_t delta;
+
+    if (g_brightness_now == goal) return;
+
+    if (g_brightness_now < goal) {
+        delta = (rt_int32_t)goal - (rt_int32_t)g_brightness_now;
+        g_brightness_now = (rt_uint8_t)((rt_int32_t)g_brightness_now +
+                                        clamp(delta, 1, AUTO_RAMP_STEP_UP));
+    } else {
+        delta = (rt_int32_t)g_brightness_now - (rt_int32_t)goal;
+        g_brightness_now = (rt_uint8_t)((rt_int32_t)g_brightness_now -
+                                        clamp(delta, 1, AUTO_RAMP_STEP_DOWN));
+    }
+}
 
 static void icon_scale_anim(lv_obj_t* icon, int32_t start_scale,
                             int32_t end_scale) {
@@ -58,6 +118,7 @@ static void auto_brightness_btn_event_cb(lv_event_t* e) {
         g_auto_brightness = !g_auto_brightness;
 
         if (g_auto_brightness) {
+            g_auto_lux_filter_reset = RT_TRUE;
             lv_obj_set_style_bg_color(g_auto_brightness_btn,
                                       lv_color_hex(0xFFFFFF), LV_STATE_DEFAULT);
             lv_obj_set_style_img_recolor(g_auto_brightness_icon,
@@ -210,21 +271,22 @@ static void on_start(void) {
     lv_img_cache_invalidate_src(NULL);
 }
 
-static void on_pause(void) {
-    lv_obj_del(g_label);
+static void brightness_detach_ui_objs(void) {
     g_label = NULL;
+    g_slider = NULL;
+    g_brightness_icon = NULL;
+    g_auto_brightness_btn = NULL;
+    g_auto_brightness_icon = NULL;
+}
+
+static void on_pause(void) {
 }
 
 static void on_resume(void) {
-    lv_obj_t* screen = lv_scr_act();
-    g_label = lv_label_create(screen);
-    lv_obj_center(g_label);
-    lv_obj_align(g_label, LV_ALIGN_TOP_MID, 0, 20);
 }
 
 static void on_stop(void) {
-    lv_obj_del(g_label);
-    g_label = NULL;
+    brightness_detach_ui_objs();
 }
 
 static void msg_handler(gui_app_msg_type_t msg, void* param) {
@@ -261,34 +323,51 @@ BUILTIN_APP_EXPORT(LV_EXT_STR_ID(brightness), LV_EXT_IMG_GET(img_brightness),
                    APP_ID, app_main);
 
 static void lv_timer_callback(lv_timer_t* timer) {
-    static char buf[32];
-    static rt_int32_t brightness_sum = 0, brightness_cnt = 0,
-                      brightness_diff = 0;
+    static char buf[48];
     static struct rt_sensor_data brightness_data;
+    rt_int32_t lux_raw;
+    rt_int32_t ema;
+    rt_uint8_t raw_target;
+
+    (void)timer;
 
     rt_device_read(g_brightness_sensor_dev, 0, &brightness_data, 1);
-    rt_sprintf(buf, "brightness: %d lux", brightness_data.data.light);
-    if (g_label) lv_label_set_text(g_label, buf);
+    lux_raw = brightness_data.data.light;
+    rt_sprintf(buf, "brightness: %d lux", (int)lux_raw);
+    if (g_label && lv_obj_is_valid(g_label)) lv_label_set_text(g_label, buf);
 
-    if (!g_auto_brightness) return;
+    if (!g_auto_brightness) {
+        g_auto_lux_ema = -1;
+        return;
+    }
 
-    brightness_sum += brightness_data.data.light;
-    brightness_cnt++;
-    if (g_lcd_sensor_dev) {
-        brightness_sum = brightness_sum / brightness_cnt / 5;
-        brightness_diff = g_brightness_now - brightness_sum;
-        LOG_I("brightness_sum: %d, brightness_now: %d, diff: %d\n",
-              brightness_sum, g_brightness_now, brightness_diff);
-        if (brightness_diff > 5 || brightness_diff < -5)
-            g_brightness_now -= brightness_diff / 5;
-        g_brightness_now = clamp(g_brightness_now, 10, 100);
-        rt_device_control(g_lcd_sensor_dev, RTGRAPHIC_CTRL_SET_BRIGHTNESS,
-                          &g_brightness_now);
-        if (g_slider)
-            lv_slider_set_value(g_slider, g_brightness_now, LV_ANIM_ON);
+    if (!g_lcd_sensor_dev) return;
 
-        brightness_sum = 0;
-        brightness_cnt = 0;
+    if (g_auto_lux_filter_reset || g_auto_lux_ema < 0) {
+        g_auto_lux_ema = lux_raw;
+        g_auto_hyst_target = g_brightness_now;
+        g_auto_lux_filter_reset = RT_FALSE;
+    } else {
+        ema = g_auto_lux_ema +
+              ((lux_raw - g_auto_lux_ema) >> AUTO_LUX_EMA_SHIFT);
+        g_auto_lux_ema = ema;
+    }
+
+    raw_target = lux_to_brightness_target(g_auto_lux_ema);
+    g_auto_hyst_target =
+        auto_target_apply_hysteresis(raw_target, g_auto_hyst_target);
+    auto_brightness_ramp_step(g_auto_hyst_target);
+
+    rt_device_control(g_lcd_sensor_dev, RTGRAPHIC_CTRL_SET_BRIGHTNESS,
+                      &g_brightness_now);
+    if (g_slider && lv_obj_is_valid(g_slider)) {
+        lv_slider_set_value(g_slider, g_brightness_now, LV_ANIM_OFF);
+        if (g_brightness_icon && lv_obj_is_valid(g_brightness_icon)) {
+            int32_t value = (int32_t)g_brightness_now;
+            int16_t angle = (int16_t)((value - BRIGHTNESS_MIN_VAL) * 360 /
+                                      BRIGHTNESS_RANGE);
+            lv_img_set_angle(g_brightness_icon, angle * 10);
+        }
     }
 }
 
@@ -313,7 +392,8 @@ static int brightness_timer_init(void) {
         return -RT_ERROR;
     }
 
-    lv_timer_t* brightness_timer = lv_timer_create(lv_timer_callback, 50, NULL);
+    lv_timer_t* brightness_timer =
+        lv_timer_create(lv_timer_callback, AUTO_TIMER_PERIOD_MS, NULL);
     lv_timer_set_repeat_count(brightness_timer, -1);
     return RT_EOK;
 }
