@@ -16,6 +16,9 @@
 static LSM6DSL_Object_t lsm6dsl;
 static struct rt_i2c_bus_device *i2c_bus_dev;
 
+/* Gyro output is mdps; bias subtracted before returning to rt_sensor_data. */
+static int32_t lsm6dsl_gyro_bias_mdps[3];
+
 static int32_t rt_func_ok(void)
 {
     return 0;
@@ -252,9 +255,9 @@ static rt_size_t _lsm6dsl_polling_get_data(rt_sensor_t sensor, struct rt_sensor_
         LSM6DSL_GYRO_GetAxes(&lsm6dsl, &gyro);
 
         data->type = RT_SENSOR_CLASS_GYRO;
-        data->data.gyro.x = gyro.x;
-        data->data.gyro.y = gyro.y;
-        data->data.gyro.z = gyro.z;
+        data->data.gyro.x = gyro.x - lsm6dsl_gyro_bias_mdps[0];
+        data->data.gyro.y = gyro.y - lsm6dsl_gyro_bias_mdps[1];
+        data->data.gyro.z = gyro.z - lsm6dsl_gyro_bias_mdps[2];
         data->timestamp = rt_sensor_get_ts();
     }
     else if (sensor->info.type == RT_SENSOR_CLASS_STEP)
@@ -448,6 +451,141 @@ __exit:
         rt_free(sensor_step);
     return -RT_ERROR;
 }
+
+void lsm6dsl_gyro_bias_set(int32_t bx, int32_t by, int32_t bz)
+{
+    lsm6dsl_gyro_bias_mdps[0] = bx;
+    lsm6dsl_gyro_bias_mdps[1] = by;
+    lsm6dsl_gyro_bias_mdps[2] = bz;
+}
+
+void lsm6dsl_gyro_bias_get(int32_t *bx, int32_t *by, int32_t *bz)
+{
+    if (bx)
+    {
+        *bx = lsm6dsl_gyro_bias_mdps[0];
+    }
+    if (by)
+    {
+        *by = lsm6dsl_gyro_bias_mdps[1];
+    }
+    if (bz)
+    {
+        *bz = lsm6dsl_gyro_bias_mdps[2];
+    }
+}
+
+void lsm6dsl_gyro_bias_clear(void)
+{
+    lsm6dsl_gyro_bias_mdps[0] = 0;
+    lsm6dsl_gyro_bias_mdps[1] = 0;
+    lsm6dsl_gyro_bias_mdps[2] = 0;
+}
+
+rt_err_t lsm6dsl_gyro_bias_calibrate(rt_uint16_t samples, rt_uint16_t delay_ms)
+{
+#define LSM6DSL_GYRO_CAL_DISCARD 20u
+    LSM6DSL_Axes_t g;
+    int64_t sx = 0, sy = 0, sz = 0;
+    rt_uint16_t i;
+
+    if (i2c_bus_dev == RT_NULL)
+    {
+        return -RT_ERROR;
+    }
+    if (samples == 0)
+    {
+        return -RT_EINVAL;
+    }
+
+    if (LSM6DSL_GYRO_Enable(&lsm6dsl) != LSM6DSL_OK)
+    {
+        return -RT_ERROR;
+    }
+    rt_thread_mdelay(120);
+
+    for (i = 0; i < LSM6DSL_GYRO_CAL_DISCARD; i++)
+    {
+        (void)LSM6DSL_GYRO_GetAxes(&lsm6dsl, &g);
+        if (delay_ms)
+        {
+            rt_thread_mdelay(delay_ms);
+        }
+    }
+
+    for (i = 0; i < samples; i++)
+    {
+        if (LSM6DSL_GYRO_GetAxes(&lsm6dsl, &g) != LSM6DSL_OK)
+        {
+            return -RT_ERROR;
+        }
+        sx += g.x;
+        sy += g.y;
+        sz += g.z;
+        if (delay_ms)
+        {
+            rt_thread_mdelay(delay_ms);
+        }
+    }
+
+    lsm6dsl_gyro_bias_mdps[0] = (int32_t)(sx / samples);
+    lsm6dsl_gyro_bias_mdps[1] = (int32_t)(sy / samples);
+    lsm6dsl_gyro_bias_mdps[2] = (int32_t)(sz / samples);
+
+    rt_kprintf("lsm6dsl gyro bias (mdps): %ld %ld %ld (n=%u)\n",
+               (long)lsm6dsl_gyro_bias_mdps[0], (long)lsm6dsl_gyro_bias_mdps[1],
+               (long)lsm6dsl_gyro_bias_mdps[2], (unsigned)samples);
+    return RT_EOK;
+}
+
+static void lsm6dsl_gyro_cal_msh(int argc, char **argv)
+{
+    rt_uint16_t n = 128;
+    rt_uint16_t dly = 5;
+
+    if (argc >= 2)
+    {
+        n = (rt_uint16_t)atoi(argv[1]);
+    }
+    if (argc >= 3)
+    {
+        dly = (rt_uint16_t)atoi(argv[2]);
+    }
+    if (n == 0)
+    {
+        rt_kprintf("Usage: lsm6dsl_gyro_cal [samples=128] [delay_ms=5]\n");
+        rt_kprintf("Keep watch still; uses raw gyro average as bias (mdps).\n");
+        return;
+    }
+    if (lsm6dsl_gyro_bias_calibrate(n, dly) != RT_EOK)
+    {
+        rt_kprintf("lsm6dsl_gyro_cal failed (init gyro / I2C?)\n");
+    }
+}
+
+static void lsm6dsl_gyro_bias_show_msh(int argc, char **argv)
+{
+    (void)argc;
+    (void)argv;
+    rt_kprintf("lsm6dsl gyro bias (mdps): %ld %ld %ld\n",
+               (long)lsm6dsl_gyro_bias_mdps[0], (long)lsm6dsl_gyro_bias_mdps[1],
+               (long)lsm6dsl_gyro_bias_mdps[2]);
+}
+
+static void lsm6dsl_gyro_bias_clr_msh(int argc, char **argv)
+{
+    (void)argc;
+    (void)argv;
+    lsm6dsl_gyro_bias_clear();
+    rt_kprintf("lsm6dsl gyro bias cleared\n");
+}
+
+MSH_CMD_EXPORT_ALIAS(lsm6dsl_gyro_cal_msh, lsm6dsl_gyro_cal,
+                     Gyro bias cal at rest [samples=128] [delay_ms=5]);
+MSH_CMD_EXPORT_ALIAS(lsm6dsl_gyro_bias_show_msh, lsm6dsl_gyro_bias,
+                     Show gyro bias mdps);
+MSH_CMD_EXPORT_ALIAS(lsm6dsl_gyro_bias_clr_msh, lsm6dsl_gyro_bias_clr,
+                     Clear gyro bias);
 
 static void lsm6dsl_test(int argc, char **argv)
 {
