@@ -17,9 +17,11 @@
 #include "lvsf_comp.h"
 #include "sensor.h"
 
-#define ALPHA 0.3
+/* 两阶段低通：先在加速度域平滑，再在像素偏移域平滑，减少抖动 */
+#define EMA_SENSOR 0.22f
+#define EMA_DISPLAY 0.30f
 #define FRUSH_FREQ 10
-#define PROPORTION 0.6
+#define PROPORTION 0.6f
 #define ANGLE_COMPENSATE 0.9
 #define LIMIT_OFFSET_X (205 - 20)
 #define LIMIT_OFFSET_Y (251 - 20)
@@ -32,7 +34,9 @@ static lv_obj_t* static_ring = NULL, *ring_outside = NULL;
 static lv_obj_t* label = NULL;
 static lv_timer_t* frush_timer = NULL;
 static rt_device_t acce_sensor_dev = RT_NULL;
-static rt_int32_t x_before = 0, y_before = 0;
+static float smooth_ax = 0.f, smooth_ay = 0.f;
+static float disp_x = 0.f, disp_y = 0.f;
+static bool bubble_filter_inited = false;
 static int over_threshold_count = 0;
 static bool ring_is_green = false;
 
@@ -60,16 +64,31 @@ static void timer_callback(lv_timer_t* timer) {
 
     rt_device_read(acce_sensor_dev, 0, &sensor_data, 1);
     if (static_ring) {
-        int x_offset =
-            (float)sensor_data.data.acce.y / 2 * ALPHA + x_before * (1 - ALPHA);
-        int y_offset =
-            (float)sensor_data.data.acce.x / 2 * ALPHA + y_before * (1 - ALPHA);
-        x_offset *= PROPORTION;
-        y_offset *= PROPORTION;
-        if (x_offset > LIMIT_OFFSET_X) x_offset = LIMIT_OFFSET_X;
-        if (x_offset < -LIMIT_OFFSET_X) x_offset = -LIMIT_OFFSET_X;
-        if (y_offset > LIMIT_OFFSET_Y) y_offset = LIMIT_OFFSET_Y;
-        if (y_offset < -LIMIT_OFFSET_Y) y_offset = -LIMIT_OFFSET_Y;
+        float raw_x = (float)sensor_data.data.acce.y * 0.5f;
+        float raw_y = (float)sensor_data.data.acce.x * 0.5f;
+
+        if (!bubble_filter_inited) {
+            smooth_ax = raw_x;
+            smooth_ay = raw_y;
+            disp_x = raw_x * PROPORTION;
+            disp_y = raw_y * PROPORTION;
+            bubble_filter_inited = true;
+        } else {
+            smooth_ax = EMA_SENSOR * raw_x + (1.f - EMA_SENSOR) * smooth_ax;
+            smooth_ay = EMA_SENSOR * raw_y + (1.f - EMA_SENSOR) * smooth_ay;
+            float target_x = smooth_ax * PROPORTION;
+            float target_y = smooth_ay * PROPORTION;
+            disp_x = EMA_DISPLAY * target_x + (1.f - EMA_DISPLAY) * disp_x;
+            disp_y = EMA_DISPLAY * target_y + (1.f - EMA_DISPLAY) * disp_y;
+        }
+
+        if (disp_x > (float)LIMIT_OFFSET_X) disp_x = (float)LIMIT_OFFSET_X;
+        if (disp_x < -(float)LIMIT_OFFSET_X) disp_x = -(float)LIMIT_OFFSET_X;
+        if (disp_y > (float)LIMIT_OFFSET_Y) disp_y = (float)LIMIT_OFFSET_Y;
+        if (disp_y < -(float)LIMIT_OFFSET_Y) disp_y = -(float)LIMIT_OFFSET_Y;
+
+        int x_offset = (int)lrintf(disp_x);
+        int y_offset = (int)lrintf(disp_y);
         lv_obj_align(static_ring, LV_ALIGN_CENTER, x_offset, y_offset);
         int abs_x = x_offset < 0 ? -x_offset : x_offset;
         int abs_y = y_offset < 0 ? -y_offset : y_offset;
@@ -91,9 +110,6 @@ static void timer_callback(lv_timer_t* timer) {
                 ring_is_green = false;
             }
         }
-
-        x_before = x_offset;
-        y_before = y_offset;
     }
     rt_sprintf(
         buf, "%d degree",
@@ -131,6 +147,8 @@ static void create_ui(void) {
 }
 
 static void on_start(void) {
+    bubble_filter_inited = false;
+
     if (acce_sensor_dev == RT_NULL) {
         acce_sensor_dev = rt_device_find("acce_lsm6dsl");
         if (acce_sensor_dev == RT_NULL) {
