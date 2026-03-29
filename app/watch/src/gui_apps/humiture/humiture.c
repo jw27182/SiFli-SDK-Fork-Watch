@@ -12,18 +12,40 @@
 #include "lv_ext_resource_manager.h"
 #include "lvgl.h"
 #include "lvsf_comp.h"
-// #include "aht20.h"
+#include "sensor.h"
 
-static float temp = 0.0, humi = 0.0;
+/* rt_hw_sensor_register(name "aht20", type TEMP) -> "temp_" + name; may truncate to RT_NAME_MAX */
+#define HUMITURE_AHT20_DEV "temp_aht20"
+
+static float temp = 0.0f, humi = 0.0f;
 static lv_obj_t* label = NULL;
 static lv_timer_t* frush_timer = NULL;
+static rt_device_t aht_sensor_dev = RT_NULL;
 
 static void timer_callback(lv_timer_t* timer) {
-    static char buf[32];
-    // AHT20_StartMeasure();
-    // rt_thread_mdelay(AHT20_MEASURE_TIME);
-    // AHT20_GetMeasureResult(&temp, &humi);
-    rt_sprintf(buf, "温度：%.2f  湿度：%.2f", temp, humi);
+    static char buf[48];
+    struct rt_sensor_data d[2];
+
+    (void)timer;
+    if (aht_sensor_dev != RT_NULL)
+    {
+        if (rt_device_read(aht_sensor_dev, 0, &d[0], 2) >= 2)
+        {
+            if (d[0].type == RT_SENSOR_CLASS_TEMP)
+            {
+                temp = (float)d[0].data.temp / 10.0f;
+            }
+            if (d[1].type == RT_SENSOR_CLASS_HUMI)
+            {
+                humi = (float)d[1].data.humi / 10.0f;
+            }
+        }
+        rt_snprintf(buf, sizeof(buf), "温度：%.1fC  湿度：%.1f%%", temp, humi);
+    }
+    else
+    {
+        rt_snprintf(buf, sizeof(buf), "未找到传感器");
+    }
     if (label) lv_label_set_text(label, buf);
 }
 
@@ -39,8 +61,17 @@ static void create_ui(void) {
 }
 
 static void on_start(void) {
-    // AHT20_Init();
-    // AHT20_Calibrate();
+    if (aht_sensor_dev == RT_NULL)
+    {
+        aht_sensor_dev = rt_device_find(HUMITURE_AHT20_DEV);
+        if (aht_sensor_dev != RT_NULL)
+        {
+            if (rt_device_open(aht_sensor_dev, RT_DEVICE_FLAG_RDONLY) != RT_EOK)
+            {
+                aht_sensor_dev = RT_NULL;
+            }
+        }
+    }
 
     create_ui();
 
@@ -52,9 +83,17 @@ static void on_pause(void) {
         lv_timer_del(frush_timer);
         frush_timer = NULL;
     }
+    if (aht_sensor_dev != RT_NULL)
+    {
+        rt_device_close(aht_sensor_dev);
+    }
 }
 
 static void on_resume(void) {
+    if (aht_sensor_dev != RT_NULL)
+    {
+        rt_device_open(aht_sensor_dev, RT_DEVICE_FLAG_RDONLY);
+    }
     if (frush_timer == NULL) {
         frush_timer = lv_timer_create(timer_callback, 1000, NULL);
         lv_timer_set_repeat_count(frush_timer, -1);
@@ -65,6 +104,11 @@ static void on_stop(void) {
     if (frush_timer) {
         lv_timer_del(frush_timer);
         frush_timer = NULL;
+    }
+    if (aht_sensor_dev != RT_NULL)
+    {
+        rt_device_close(aht_sensor_dev);
+        aht_sensor_dev = RT_NULL;
     }
 }
 

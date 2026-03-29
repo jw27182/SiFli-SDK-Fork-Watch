@@ -8,14 +8,10 @@ static rt_size_t aht20_fetch_data(struct rt_sensor_device *sensor, void *buf, rt
     struct rt_sensor_data *data = (struct rt_sensor_data *)buf;
     float temp = 0, humi = 0;
 
-    if (aht20_startmeasure() != 0)
+    (void)len;
+    if (aht20_measure(&temp, &humi) != RT_EOK)
     {
-        LOG_E("AHT20 start measure failed");
-        return 0;
-    }
-    if (aht20_getmeasureresult(&temp, &humi) != 0)
-    {
-        LOG_E("AHT20 get result failed");
+        LOG_E("AHT20 measure failed");
         return 0;
     }
 
@@ -47,6 +43,16 @@ int rt_hw_aht20_init(const char *name, struct rt_sensor_config *cfg)
     int result = -RT_ERROR;
     rt_sensor_t sensor = RT_NULL;
 
+    if (cfg == RT_NULL || cfg->intf.dev_name == RT_NULL)
+    {
+        LOG_E("AHT20 invalid cfg");
+        return -RT_ERROR;
+    }
+    if (aht20_init(cfg->intf.dev_name) != RT_EOK)
+    {
+        LOG_E("AHT20 I2C bus init failed (%s)", cfg->intf.dev_name);
+        return -RT_ERROR;
+    }
     if (aht20_calibrate() != 0)
     {
         LOG_E("AHT20 calibrate failed");
@@ -85,15 +91,3 @@ int rt_hw_aht20_init(const char *name, struct rt_sensor_config *cfg)
         return RT_EOK;
     }
 }
-
-static int rt_aht20_auto_register(void)
-{
-    struct rt_sensor_config cfg = {0};
-
-    /* Set the sensor configuration parameters */
-    cfg.intf.dev_name = AHT20_I2C_BUS;    /* Modification according to the actual I2C equipment used */
-    cfg.intf.user_data = (void *)0x38;
-
-    return rt_hw_aht20_init("aht20", &cfg);
-}
-INIT_APP_EXPORT(rt_aht20_auto_register);
