@@ -132,7 +132,7 @@ int set_gh3018_hr_mode(void)
     HBD_FifoConfig(1, HBD_FUNCTIONAL_STATE_DISABLE);
 
     gh30x_module_stop();
-    gh30x_module_start(GH30X_FUNCTION_HR);
+    gh30x_module_start(GH30X_FUNCTION_HR | GH30X_FUNCTION_SOFT_ADT);
 
     HBD_FifoConfig(0, HBD_FUNCTIONAL_STATE_ENABLE);
     HBD_FifoConfig(1, HBD_FUNCTIONAL_STATE_ENABLE);
@@ -168,7 +168,6 @@ int reset_gh3018(void)
 static bool last_wearing_status = false;
 void soft_adt_callback(bool status)
 {
-    // LOG_D("soft_adt_callback %d\n", status);
     if (last_wearing_status == status)
         return;
 

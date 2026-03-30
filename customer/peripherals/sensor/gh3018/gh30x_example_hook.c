@@ -13,6 +13,7 @@
 #include "gh30x_example_common.h"
 #include "gh30x_demo_algo_call.h"
 #include "gh30x_demo_algo_config.h"
+#include "gh30x_hr_ui_notify.h"
 
 extern void gh3018_set_hr(uint32_t hr);
 
@@ -79,6 +80,24 @@ void Gh30xAlgorithmGetIoDataHookFunc(const STGh30xFrameInfo *const pstFrameInfo)
     /* algo calculate */
 #if (__GOODIX_ALGO_CALL_MODE__)
     GH30X_AlgoCalculate(pstFrameInfo->unFunctionID);
+#endif
+
+#if (__GOODIX_ALGO_CALL_MODE__) && (__USE_GOODIX_HR_ALGORITHM__)
+    /* 心率 → UI 队列：统一在此推送（不经 gh30x_demo_algo_hook GH30X_HrAlgorithmResultReport） */
+    if (pstFrameInfo != 0 &&
+        (pstFrameInfo->unFunctionID & GH30X_FUNCTION_HR) != 0 &&
+        pstFrameInfo->pstAlgoResult != 0)
+    {
+        STGh30xAlgoResult *pr = pstFrameInfo->pstAlgoResult;
+        if (pr->uchUpdateFlag != 0)
+        {
+            GS32 bpm = pr->snResult[0];
+            if (bpm > 0 && bpm <= 240)
+            {
+                gh30x_hr_ui_notify_hr((uint8_t)bpm, 1);
+            }
+        }
+    }
 #endif
 
 #if __GH_MSG_WITH_ALGO_LAYER_EN__

@@ -44,3 +44,5 @@ static int aht20_sensor_register_init(void)
 
 INIT_DEVICE_EXPORT(aht20_sensor_register_init);
 #endif
+
+/* GH3018：不在此启动心率测量，仅在「心率」应用 on_start 中开启，on_pause/on_stop 关闭 */

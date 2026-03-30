@@ -3,9 +3,8 @@ import rtconfig
 import os
 
 cwd = GetCurrentDir()
-
-src = Glob('*.c')
-inc = [cwd]
+dm = os.path.normpath(os.path.join(cwd, '..', '..', 'device_manager'))
+inc = [cwd, dm]
 
 if GetDepend(['HR_USING_GH3018']):
     gh3018_inc = os.path.normpath(
@@ -13,6 +12,7 @@ if GetDepend(['HR_USING_GH3018']):
     )
     inc.append(gh3018_inc)
 
+src = Glob('*.c')
 LOCAL_CCFLAGS = ''
 
 group = DefineGroup('App_watch_demo', src, depend = [''], CPPPATH = inc, LOCAL_CCFLAGS = LOCAL_CCFLAGS)
