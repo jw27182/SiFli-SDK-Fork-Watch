@@ -7,11 +7,17 @@ cwd = GetCurrentDir()
 src = Glob('*.c')
 inc = [cwd]
 
-if GetDepend(['HR_USING_GH3018']):
-    gh3018_inc = os.path.normpath(
-        os.path.join(cwd, '..', '..', '..', '..', 'customer', 'peripherals', 'sensor', 'gh3018')
-    )
-    inc.append(gh3018_inc)
+# if GetDepend(['HR_USING_GH3018']):
+#     gh3018_inc = os.path.normpath(
+#         os.path.join(cwd, '..', '..', '..', '..', 'customer', 'peripherals', 'sensor', 'gh3018')
+#     )
+#     inc.append(gh3018_inc)
+
+# if GetDepend(['MAG_USING_MMC56X3']):
+#     mmc56_inc = os.path.normpath(
+#         os.path.join(cwd, '..', '..', '..', '..', 'customer', 'peripherals', 'sensor', 'MMC56x3')
+#     )
+#     inc.append(mmc56_inc)
 
 LOCAL_CCFLAGS = ''
 

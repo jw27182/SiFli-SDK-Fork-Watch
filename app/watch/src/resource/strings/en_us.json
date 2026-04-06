@@ -51,5 +51,13 @@
     "gyroscope": "gyroscope",
     "elevation": "elevation",
     "brightness": "brightness",
-    "location": "location"
+    "location": "location",
+    "compass": "compass",
+    "compass_cal_start": "Start Calibration",
+    "compass_cal_stop": "Finish Calibration",
+    "compass_cal_keep_level": "Keep level and rotate slowly",
+    "compass_cal_success": "Calibration OK",
+    "compass_cal_fail": "Calibration failed, retry",
+    "compass_cal_need_turn": "Tap calibrate and rotate one turn",
+    "compass_interference": "Magnetic interference"
 }

@@ -35,7 +35,9 @@ share_prefs_t *share_prefs_open(const char *prefs_name, uint32_t mode)
     p_db    = &p_flshdb_prefs->db;
 
     name_len = strlen(prefs_name);
-    name_len = MAX((SHARE_PREFS_MAX_NAME_LEN - 1), name_len);
+    if (name_len > SHARE_PREFS_MAX_NAME_LEN - 1) {
+        name_len = SHARE_PREFS_MAX_NAME_LEN - 1;
+    }
 
     memcpy(p_prefs->prfs_name, prefs_name, name_len);
     p_prefs->prfs_name[name_len] = '\0';

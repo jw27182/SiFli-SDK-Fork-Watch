@@ -52,5 +52,13 @@
     "gyroscope": "陀螺仪",
     "elevation": "海拔高度",
     "brightness": "亮度",
-    "location": "定位"
+    "location": "定位",
+    "compass": "指南针",
+    "compass_cal_start": "开始校准",
+    "compass_cal_stop": "结束校准",
+    "compass_cal_keep_level": "请保持水平慢转",
+    "compass_cal_success": "校准完成",
+    "compass_cal_fail": "校准失败,请重试",
+    "compass_cal_need_turn": "请点击校准并慢转一圈",
+    "compass_interference": "磁干扰较强"
 }

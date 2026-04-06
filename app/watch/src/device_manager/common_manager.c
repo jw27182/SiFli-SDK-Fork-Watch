@@ -45,4 +45,19 @@ static int aht20_sensor_register_init(void)
 INIT_DEVICE_EXPORT(aht20_sensor_register_init);
 #endif
 
-/* GH3018：不在此启动心率测量，仅在「心率」应用 on_start 中开启，on_pause/on_stop 关闭 */
+#ifdef MAG_USING_MMC56X3
+#include "sensor_memsic_mmc56x3.h"
+
+static int mmc56x3_sensor_register_init(void)
+{
+    struct rt_sensor_config cfg = {0};
+
+    cfg.intf.dev_name = "i2c3";
+    cfg.irq_pin.pin = RT_PIN_NONE;
+
+    /* 注册名 mmc56x3 → 设备名 mag_mmc56x3（见 rt_hw_sensor_register 前缀规则） */
+    return rt_hw_mmc56x3_init("mmc56x3", &cfg);
+}
+
+INIT_DEVICE_EXPORT(mmc56x3_sensor_register_init);
+#endif
