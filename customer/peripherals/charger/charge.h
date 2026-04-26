@@ -1,6 +1,7 @@
 #ifndef __CHARGE_H__
 #define __CHARGE_H__
 
+#include <stdint.h>
 #include <rtthread.h>
 
 
@@ -33,6 +34,7 @@ typedef enum
     RT_CHARGE_SET_TARGET_VOLT,
     RT_CHARGE_SET_REPVOLT,
     RT_CHARGE_SET_OVER_VOLT,
+    RT_CHARGE_SET_SHIP_MODE,
 } rt_charge_cmd_t;
 
 typedef enum
@@ -201,6 +203,15 @@ rt_charge_err_t rt_charge_set_repvolt(uint32_t volt);
  * @retval function execution result @see rt_charge_err_t
 */
 rt_charge_err_t rt_charge_set_over_volt(uint32_t volt);
+
+/**
+ * @brief Configure ship/transport mode
+ *
+ * @param[in] enable 1: enter ship mode, 0: exit ship mode (if supported by IC)
+ *
+ * @retval function execution result @see rt_charge_err_t
+ */
+rt_charge_err_t rt_charge_set_ship_mode(uint8_t enable);
 
 
 void rt_charge_event_notify(rt_charge_event_t event);

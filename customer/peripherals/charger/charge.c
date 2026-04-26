@@ -136,6 +136,11 @@ rt_charge_err_t rt_charge_set_over_volt(uint32_t volt)
     return rt_device_control(g_charge, RT_CHARGE_SET_OVER_VOLT, &volt);
 }
 
+rt_charge_err_t rt_charge_set_ship_mode(uint8_t enable)
+{
+    return rt_device_control(g_charge, RT_CHARGE_SET_SHIP_MODE, &enable);
+}
+
 
 void rt_charge_event_notify(rt_charge_event_t event)
 {

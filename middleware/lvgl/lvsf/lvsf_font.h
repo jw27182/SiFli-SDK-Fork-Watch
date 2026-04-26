@@ -56,7 +56,7 @@ typedef enum
 #if LV_HOR_RES_MAX > 350
     FONT_SMALL      = 16,
     FONT_NORMAL     = 20,
-    FONT_SUBTITLE   = 24,
+    FONT_SUBTITLE   = 25,
     FONT_TITLE      = 28,
     FONT_BIGL       = 30,
     FONT_HUGE       = 42,

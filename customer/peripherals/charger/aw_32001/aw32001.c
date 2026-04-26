@@ -31,6 +31,7 @@ static rt_charge_device_t charge_device;
 #define AW32001_REG_INDIVIDUAL_CHARGE               0x0B
 #define AW32001_REG_ADD_FUNC_0                      0x0C
 #define AW32001_REG_ADD_FUNC_1                      0x22
+#define AW32001_MAIN_CTRL_BATFET_DIS                (1 << 5)
 
 #define AW32001_NO_CHARGING                         0
 #define AW32001_PRE_CHARGING                        1
@@ -215,6 +216,40 @@ rt_err_t aw32001_set_target_volt(uint32_t set_volt)
     return ret;
 }
 
+/* Shipping mode is controlled by BATFET_DIS in MAIN_CTRL register. */
+static rt_err_t aw32001_set_ship_mode(uint8_t enable)
+{
+    uint8_t reg = 0;
+    rt_size_t size = 0;
+
+    size = rt_i2c_mem_read(aw32001_i2c_bus, AW32001_I2C_ADDRESS,
+                           AW32001_REG_MAIN_CTRL, 8, &reg, 1);
+    if (size < 1)
+    {
+        rt_kprintf("aw32001_set_ship_mode read fail\n");
+        return RT_CHARGE_ERROR_UNSUPPORTED;
+    }
+
+    if (enable)
+    {
+        reg |= AW32001_MAIN_CTRL_BATFET_DIS;
+    }
+    else
+    {
+        reg &= ~AW32001_MAIN_CTRL_BATFET_DIS;
+    }
+
+    size = rt_i2c_mem_write(aw32001_i2c_bus, AW32001_I2C_ADDRESS,
+                            AW32001_REG_MAIN_CTRL, 8, &reg, 1);
+    if (size < 1)
+    {
+        rt_kprintf("aw32001_set_ship_mode write fail\n");
+        return RT_CHARGE_ERROR_UNSUPPORTED;
+    }
+
+    return RT_CHARGE_EOK;
+}
+
 
 rt_err_t aw32001_control(rt_charge_device_t *charge, int cmd, void *args)
 {
@@ -310,6 +345,13 @@ rt_err_t aw32001_control(rt_charge_device_t *charge, int cmd, void *args)
     {
         uint32_t *target_volt = (uint32_t *)args;
         aw32001_set_target_volt(*target_volt);
+    }
+    break;
+
+    case RT_CHARGE_SET_SHIP_MODE:
+    {
+        uint8_t *enable = (uint8_t *)args;
+        ret = aw32001_set_ship_mode(*enable);
     }
     break;
     default:
