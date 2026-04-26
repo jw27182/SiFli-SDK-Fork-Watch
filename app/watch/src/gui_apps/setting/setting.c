@@ -14,6 +14,7 @@
 #include "lv_ext_resource_manager.h"
 #include "lvgl.h"
 #include "lvsf_comp.h"
+#include "my_widget.h"
 #include "screens.h"
 #include "actions.h"
 #include "images.h"
@@ -23,6 +24,26 @@
 #include <rtdbg.h>
 
 static rt_bool_t g_setting_slider_syncing = RT_FALSE;
+#define SETTING_DEV_PAGE_ID "setting_dev"
+
+static void setting_dev_page_msg_handler(gui_app_msg_type_t msg, void *param) {
+    (void)param;
+
+    switch (msg) {
+        case GUI_APP_MSG_ONSTART:
+        case GUI_APP_MSG_ONRESUME:
+            create_screen_developer_mode();
+            break;
+        case GUI_APP_MSG_ONSTOP:
+            if (objects.developer_mode && lv_obj_is_valid(objects.developer_mode)) {
+                lv_obj_del(objects.developer_mode);
+            }
+            objects.developer_mode = NULL;
+            break;
+        default:
+            break;
+    }
+}
 
 static void setting_charge_on_changed(rt_uint16_t current_ma, void *user_data) {
     char text[40];
@@ -106,6 +127,24 @@ void action_on_charge_current_subtract_clicked(lv_event_t *e)
 {
     (void)e;
     charge_manager_adjust_current(-CHARGE_MANAGER_CURRENT_STEP_MA);
+}
+
+void action_on_developer_mode_clicked(lv_event_t * e)
+{
+    (void)e;
+    if (gui_app_create_page(SETTING_DEV_PAGE_ID, setting_dev_page_msg_handler) < 0) {
+        LOG_E("open developer page failed");
+    }
+}
+void action_on_developer_mode_show_toast_tip(lv_event_t * e)
+{
+    (void)e;
+    myui_toast_show(MYUI_TOAST_TYPE_TIP, "Developer mode show toast tip");
+}
+void action_on_developer_mode_show_toast_warning(lv_event_t * e)
+{
+    (void)e;
+    myui_toast_show(MYUI_TOAST_TYPE_WARNING, "Developer mode show toast warning");
 }
 
 static void create_ui(void)
