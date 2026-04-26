@@ -1,0 +1,14 @@
+from building import *
+import rtconfig
+import os
+
+cwd = GetCurrentDir()
+
+src = Glob('*.c')
+inc = [cwd]
+
+LOCAL_CCFLAGS = ''
+
+group = DefineGroup('App_watch_demo', src, depend = [''], CPPPATH = inc, LOCAL_CCFLAGS = LOCAL_CCFLAGS)
+
+Return('group')
