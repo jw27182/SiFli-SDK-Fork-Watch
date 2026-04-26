@@ -22,6 +22,8 @@
 #define APP_WATCH_GUI_TASK_STACK_SIZE 16*1024
 
 #define SLEEP_CTRL_PIN   (BSP_KEY1_PIN)
+#define BACK_CTRL_PIN    (BSP_KEY2_PIN)
+
 #define LCD_DEVICE_NAME  "lcd"
 #define IDLE_TIME_LIMIT  (10000)
 
@@ -100,10 +102,17 @@ static int32_t default_keypad_handler(lv_key_t key, lv_indev_state_t event)
     #define BUTTON_ACTIVE_POL BUTTON_ACTIVE_LOW
 #endif
 
+#ifdef BSP_KEY2_ACTIVE_HIGH
+    #define BUTTON2_ACTIVE_POL BUTTON_ACTIVE_HIGH
+#else
+    #define BUTTON2_ACTIVE_POL BUTTON_ACTIVE_LOW
+#endif
+
 
 typedef enum
 {
-    KEYPAD_KEY_HOME = 2,
+    KEYPAD_KEY_HOME = LV_KEY_HOME,
+    KEYPAD_KEY_ESC  = LV_KEY_ESC,
 } keypad_key_code_t;
 
 typedef enum
@@ -119,6 +128,7 @@ typedef struct
 } keypad_status_t;
 
 static int32_t key1_button_handle = -1;
+static int32_t key2_button_handle = -1;
 static keypad_status_t keypad_status;
 
 void button_key_read(uint32_t *last_key, lv_indev_state_t *state)
@@ -146,7 +156,10 @@ static void button_event_handler(int32_t pin, button_action_t action)
 
     LOG_I("button:%d,%d", pin, action);
 
-    if ((SLEEP_CTRL_PIN == pin) && (!gui_is_active() || (action == BUTTON_LONG_PRESSED)))
+    if ((!gui_is_active() || (action == BUTTON_LONG_PRESSED))
+            && ((SLEEP_CTRL_PIN == pin)
+                || (BACK_CTRL_PIN == pin)
+               ))
     {
         pm_action = GUI_PM_ACTION_INVALID;
         switch (action)
@@ -189,8 +202,16 @@ static void button_event_handler(int32_t pin, button_action_t action)
         {
         case BUTTON_CLICKED:
         {
-            keypad_status.last_key = KEYPAD_KEY_HOME;
-            keypad_status.last_key_state = KEYPAD_KEY_STATE_PRESSED;
+            if (pin == SLEEP_CTRL_PIN)
+            {
+                keypad_status.last_key = KEYPAD_KEY_HOME;
+                keypad_status.last_key_state = KEYPAD_KEY_STATE_PRESSED;
+            }
+            else if (pin == BACK_CTRL_PIN)
+            {
+                keypad_status.last_key = KEYPAD_KEY_ESC;
+                keypad_status.last_key_state = KEYPAD_KEY_STATE_PRESSED;
+            }
             break;
         }
         default:
@@ -211,6 +232,15 @@ static void init_pin(void)
     RT_ASSERT(id >= 0);
     RT_ASSERT(SF_EOK == button_enable(id));
     key1_button_handle = id;
+
+    cfg.pin = BACK_CTRL_PIN;
+    cfg.active_state = BUTTON2_ACTIVE_POL;
+    cfg.mode = PIN_MODE_INPUT;
+    cfg.button_handler = button_event_handler;
+    id = button_init(&cfg);
+    RT_ASSERT(id >= 0);
+    RT_ASSERT(SF_EOK == button_enable(id));
+    key2_button_handle = id;
 }
 
 #else
@@ -451,6 +481,15 @@ void app_watch_entry(void *parameter)
     RT_ASSERT(wakeup_pin >= 0);
 
     pm_enable_pin_wakeup(wakeup_pin, AON_PIN_MODE_DOUBLE_EDGE);
+
+    gpio = GET_GPIO_INSTANCE(BACK_CTRL_PIN);
+    gpio_pin = GET_GPIOx_PIN(BACK_CTRL_PIN);
+
+    wakeup_pin = HAL_HPAON_QueryWakeupPin(gpio, gpio_pin);
+    RT_ASSERT(wakeup_pin >= 0);
+
+    pm_enable_pin_wakeup(wakeup_pin, AON_PIN_MODE_DOUBLE_EDGE);
+
     gui_ctx_init();
     gui_pm_init(lcd_device, pm_event_handler);
 #endif /* BSP_USING_PM */
