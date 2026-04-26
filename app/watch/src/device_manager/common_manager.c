@@ -61,3 +61,14 @@ static int mmc56x3_sensor_register_init(void)
 
 INIT_DEVICE_EXPORT(mmc56x3_sensor_register_init);
 #endif
+
+#ifdef GPS_USING_ATGM336H
+#include "um_gps_if.h"
+
+static int gps_init(void)
+{
+    return um_gps_init();
+}
+
+INIT_DEVICE_EXPORT(gps_init);
+#endif

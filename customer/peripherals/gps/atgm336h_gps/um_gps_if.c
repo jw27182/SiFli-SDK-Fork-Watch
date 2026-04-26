@@ -391,13 +391,6 @@ int um_gps_get_data(double *lati, double *longiti, double *alti, void *detail) {
     return 0;
 }
 
-static int gps_init(void) {
-    um_gps_init();
-    return um_gps_open();
-}
-
-INIT_COMPONENT_EXPORT(gps_init);
-
 #define GPS_CMD_TEST
 #ifdef GPS_CMD_TEST
 
