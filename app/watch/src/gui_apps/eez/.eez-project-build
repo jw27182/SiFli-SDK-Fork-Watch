@@ -17,8 +17,9 @@
     "ui_image_img_corona_second.c",
     "ui_image_img_enter.c",
     "ui_image_img_minutes_mask.c",
-    "ui_image_img_satellite_icon.c",
     "ui_image_img_shutdown.c",
+    "ui_image_img_sync.c",
+    "ui_image_img_temperature_icon.c",
     "vars.h"
   ]
 }

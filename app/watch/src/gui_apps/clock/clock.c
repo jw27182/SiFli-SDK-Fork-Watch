@@ -14,9 +14,9 @@
 #include "lvsf_comp.h"
 #include "screens.h"
 #include "images.h"
-#include "string.h"
+#include <string.h>
+#include "sensor.h"
 #include "time_manager.h"
-#include "um_gps_if.h"
 #include "battery_calculator.h"
 
 #define DBG_TAG "gui_apps.clock"
@@ -24,9 +24,13 @@
 #include <rtdbg.h>
 
 #define TIME_SCALE 200 // 200ms检查一次RTC
+#define CLOCK_TEMPERATURE_DEV "temp_aht20"
+#define CLOCK_TEMP_MIN_C (-20.0f)
+#define CLOCK_TEMP_MAX_C (40.0f)
 
 static lv_timer_t *frush_timer = NULL;
 static rt_device_t battery_device;
+static rt_device_t temperature_sensor_dev = RT_NULL;
 static char buf[16];
 static dm_date_time_t dt_last = {0};
 static const char *week_day_str[] = {"SUN", "MON", "TUE", "WED",
@@ -142,8 +146,54 @@ static void frush_battery_status()
         lv_img_set_src(objects.img_battery_icon, &img_img_battery_icon);
 }
 
-static void frush_gps_status()
+static void frush_temperature_status()
 {
+    struct rt_sensor_data data;
+    float temp_c;
+    float ratio;
+    int16_t arc_min;
+    int16_t arc_max;
+    int32_t arc_value;
+    uint8_t red;
+    uint8_t green;
+    uint8_t blue;
+    lv_color_t arc_color;
+
+    if (temperature_sensor_dev == RT_NULL)
+    {
+        lv_label_set_text(objects.label_temperature_val, "--℃");
+        return;
+    }
+
+    if (rt_device_read(temperature_sensor_dev, 0, &data, 1) < 1 ||
+        data.type != RT_SENSOR_CLASS_TEMP)
+    {
+        lv_label_set_text(objects.label_temperature_val, "--℃");
+        return;
+    }
+
+    temp_c = (float)data.data.temp / 10.0f;
+    ratio = (temp_c - CLOCK_TEMP_MIN_C) / (CLOCK_TEMP_MAX_C - CLOCK_TEMP_MIN_C);
+    if (ratio < 0.0f)
+        ratio = 0.0f;
+    else if (ratio > 1.0f)
+        ratio = 1.0f;
+
+    arc_min = lv_arc_get_min_value(objects.arc_temperature_status);
+    arc_max = lv_arc_get_max_value(objects.arc_temperature_status);
+    arc_value = arc_min + (int32_t)((arc_max - arc_min) * ratio + 0.5f);
+    lv_arc_set_value(objects.arc_temperature_status, arc_value);
+
+    red = (uint8_t)(45 + (255 - 45) * ratio + 0.5f);
+    green = (uint8_t)(140 + (59 - 140) * ratio + 0.5f);
+    blue = (uint8_t)(255 + (48 - 255) * ratio + 0.5f);
+    arc_color = lv_color_make(red, green, blue);
+    lv_obj_set_style_arc_color(objects.arc_temperature_status, arc_color,
+                               LV_PART_MAIN);
+    lv_obj_set_style_arc_color(objects.arc_temperature_status, arc_color,
+                               LV_PART_INDICATOR);
+
+    lv_label_set_text_fmt(objects.label_temperature_val, "%.1f℃", temp_c);
 }
 
 /* ================= 主刷新逻辑 ================= */
@@ -152,7 +202,7 @@ static void frush_clock_ui_cb(struct _lv_timer_t *t)
 {
     frush_time();
     frush_battery_status();
-    frush_gps_status();
+    frush_temperature_status();
 }
 
 /* ================= UI初始化 ================= */
@@ -163,35 +213,22 @@ static void start_frush_timer(void)
     frush_timer = lv_timer_create(frush_clock_ui_cb, TIME_SCALE, NULL);
 
     lv_timer_set_repeat_count(frush_timer, -1);
-
-    /* 测试设置时间（可删除） */
-    // dm_date_time_t dt_set = {2026, 2, 26, 17, 56, 0};
-    // rt_err_t ret = dm_set_date_time(dt_set);
-    // RT_ASSERT(ret == RT_EOK);
 }
 
 /* ================= 生命周期 ================= */
 extern const lv_img_dsc_t img_img_corona_second;
 static void on_start(void)
 {
-    static GpsData gps_data;
-    if (um_gps_get_data(NULL, NULL, NULL, &gps_data) == 0)
-    {
-        dm_date_time_t dt_set = {gps_data.location_data.timestamp.tm_year,
-                                 gps_data.location_data.timestamp.tm_mon,
-                                 gps_data.location_data.timestamp.tm_mday,
-                                 gps_data.location_data.timestamp.tm_hour,
-                                 gps_data.location_data.timestamp.tm_min,
-                                 gps_data.location_data.timestamp.tm_sec};
-        rt_err_t ret = dm_set_date_time(dt_set);
-        RT_ASSERT(ret == RT_EOK);
-    }
     battery_device = rt_device_find("bat1");
+    temperature_sensor_dev = rt_device_find(CLOCK_TEMPERATURE_DEV);
+    if (temperature_sensor_dev != RT_NULL)
+    {
+        if (rt_device_open(temperature_sensor_dev, RT_DEVICE_FLAG_RDONLY) != RT_EOK)
+            temperature_sensor_dev = RT_NULL;
+    }
 
     create_screen_clock();
     start_frush_timer();
-    lv_arc_set_value(objects.arc_gps_status, gps_data.sv_data.num_svs * 5);
-
     lv_img_set_src(objects.img_corona_second,
                    app_cache_copy_alloc(&img_img_corona_second, ROTATE_MEM));
     lv_img_cache_invalidate_src(NULL);
@@ -204,10 +241,15 @@ static void on_pause(void)
         lv_timer_del(frush_timer);
         frush_timer = NULL;
     }
+    if (temperature_sensor_dev != RT_NULL)
+        rt_device_close(temperature_sensor_dev);
 }
 
 static void on_resume(void)
 {
+    if (temperature_sensor_dev != RT_NULL)
+        rt_device_open(temperature_sensor_dev, RT_DEVICE_FLAG_RDONLY);
+
     if (frush_timer == NULL)
     {
         start_frush_timer();
@@ -220,6 +262,12 @@ static void on_stop(void)
     {
         lv_timer_del(frush_timer);
         frush_timer = NULL;
+    }
+
+    if (temperature_sensor_dev != RT_NULL)
+    {
+        rt_device_close(temperature_sensor_dev);
+        temperature_sensor_dev = RT_NULL;
     }
 
     lv_img_dsc_t *cur =

@@ -8,6 +8,7 @@
 #include "app_mem.h"
 #include "brightness_manager.h"
 #include "charge_manager.h"
+#include "gnss_manager.h"
 #include "gui_app_fwk.h"
 #include "littlevgl2rtt.h"
 #include "lv_ex_data.h"
@@ -25,6 +26,34 @@
 
 static rt_bool_t g_setting_slider_syncing = RT_FALSE;
 #define SETTING_DEV_PAGE_ID "setting_dev"
+
+static void setting_sync_utc_time_success_cb(const dm_date_time_t *utc_time,
+                                             void *user_data) {
+    char text[64];
+    (void)user_data;
+
+    if (!utc_time) {
+        myui_toast_show(MYUI_TOAST_TYPE_TIP, "GNSS时间同步成功");
+        return;
+    }
+
+    rt_snprintf(text, sizeof(text), "同步成功 %04d-%02d-%02d %02d:%02d:%02d",
+                utc_time->year, utc_time->month, utc_time->day, utc_time->hour,
+                utc_time->minute, utc_time->second);
+    myui_toast_show(MYUI_TOAST_TYPE_TIP, text);
+}
+
+static void setting_sync_utc_time_fail_cb(rt_err_t err, void *user_data) {
+    (void)user_data;
+
+    if (err == -RT_ETIMEOUT) {
+        myui_toast_show(MYUI_TOAST_TYPE_WARNING, "GNSS时间同步超时");
+    } else if (err == -RT_ENOSYS) {
+        myui_toast_show(MYUI_TOAST_TYPE_WARNING, "当前版本未启用GNSS");
+    } else {
+        myui_toast_show(MYUI_TOAST_TYPE_WARNING, "GNSS时间同步失败");
+    }
+}
 
 static void setting_dev_page_msg_handler(gui_app_msg_type_t msg, void *param) {
     (void)param;
@@ -101,6 +130,24 @@ void action_on_shutdown_clicked(lv_event_t *e)
         LOG_E("set ship mode failed");
     }
 }
+
+void action_on_sync_utc_time_clicked(lv_event_t *e)
+{
+    int ret;
+    (void)e;
+
+    ret = gnss_manager_sync_utc_to_rtc_async(setting_sync_utc_time_success_cb,
+                                             setting_sync_utc_time_fail_cb,
+                                             RT_NULL);
+    if (ret == -RT_EBUSY) {
+        myui_toast_show(MYUI_TOAST_TYPE_TIP, "GNSS正在同步，请稍候");
+    } else if (ret != RT_EOK) {
+        myui_toast_show(MYUI_TOAST_TYPE_WARNING, "启动GNSS同步失败");
+    } else {
+        myui_toast_show(MYUI_TOAST_TYPE_TIP, "开始同步GNSS时间");
+    }
+}
+
 void action_on_auto_brightness_clicked(lv_event_t *e)
 {
     lv_obj_t *sw = lv_event_get_target(e);
