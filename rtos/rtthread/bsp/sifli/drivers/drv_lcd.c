@@ -1116,6 +1116,14 @@ static rt_err_t api_lcd_control(rt_device_t dev, int cmd, void *args)
                 }
 #endif /* BSP_USING_LCD_FRAMEBUFFER */
 
+#ifdef BSP_USING_EPIC
+                if (drv_epic_is_busy())
+                {
+                    *(bool *)args = true;
+                    return RT_EOK;
+                }
+#endif /* BSP_USING_EPIC */
+
                 *(bool *)args = (drv_lcd.mq->entry != 0) ? true : false;
             }
             else

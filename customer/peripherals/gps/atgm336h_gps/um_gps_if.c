@@ -445,7 +445,7 @@ static void gps_thread_entry(void *param) {
                   gps_data.location_data.timestamp.tm_sec);
             LOG_I(
                 "--------------------------------------------------------------"
-                "---------------------");
+                "-------------------");
 
             for (int i = 0; i < gps_data.sv_data.num_svs; i++) {
                 GnssSvInfo sv_info = gps_data.sv_data.gnss_sv_list[i];

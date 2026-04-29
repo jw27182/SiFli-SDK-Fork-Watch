@@ -180,6 +180,14 @@ int gnss_manager_sync_utc_to_rtc_async(gnss_manager_sync_success_cb_t on_success
     return RT_EOK;
 }
 
+static int gps_init(void)
+{
+    return um_gps_init();
+    gnss_manager_close();
+}
+
+INIT_DEVICE_EXPORT(gps_init);
+
 #else
 
 int gnss_manager_open(void) { return -RT_ENOSYS; }
