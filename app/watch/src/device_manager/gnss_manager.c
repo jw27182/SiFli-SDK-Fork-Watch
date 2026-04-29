@@ -25,6 +25,7 @@ static rt_bool_t g_gnss_started = RT_FALSE;
 static lv_timer_t *g_sync_timer = RT_NULL;
 static rt_uint32_t g_sync_elapsed_ms = 0;
 static rt_bool_t g_sync_in_progress = RT_FALSE;
+static rt_bool_t g_sync_hold_open = RT_FALSE;
 
 static gnss_manager_sync_success_cb_t g_sync_success_cb = RT_NULL;
 static gnss_manager_sync_fail_cb_t g_sync_fail_cb = RT_NULL;
@@ -70,12 +71,9 @@ static void gnss_sync_finish(rt_err_t err) {
     g_sync_fail_cb = RT_NULL;
     g_sync_user_data = RT_NULL;
 
-    if (g_open_ref == 0 && g_gnss_started) {
-        if (um_gps_close() == 0) {
-            g_gnss_started = RT_FALSE;
-        } else {
-            LOG_W("close gnss after sync failed");
-        }
+    if (g_sync_hold_open) {
+        gnss_manager_close();
+        g_sync_hold_open = RT_FALSE;
     }
 }
 
@@ -151,14 +149,12 @@ int gnss_manager_sync_utc_to_rtc_async(gnss_manager_sync_success_cb_t on_success
 
     if (g_sync_in_progress) return -RT_EBUSY;
 
-    if (!g_gnss_started) {
-        ret = um_gps_open();
-        if (ret != 0) {
-            LOG_E("open gnss for sync failed: %d", ret);
-            return -RT_ERROR;
-        }
-        g_gnss_started = RT_TRUE;
+    ret = gnss_manager_open();
+    if (ret != RT_EOK) {
+        LOG_E("open gnss for sync failed: %d", ret);
+        return ret;
     }
+    g_sync_hold_open = RT_TRUE;
 
     g_sync_success_cb = on_success;
     g_sync_fail_cb = on_fail;
@@ -173,9 +169,9 @@ int gnss_manager_sync_utc_to_rtc_async(gnss_manager_sync_success_cb_t on_success
         g_sync_success_cb = RT_NULL;
         g_sync_fail_cb = RT_NULL;
         g_sync_user_data = RT_NULL;
-        if (g_open_ref == 0 && g_gnss_started) {
-            um_gps_close();
-            g_gnss_started = RT_FALSE;
+        if (g_sync_hold_open) {
+            gnss_manager_close();
+            g_sync_hold_open = RT_FALSE;
         }
         return -RT_ENOMEM;
     }

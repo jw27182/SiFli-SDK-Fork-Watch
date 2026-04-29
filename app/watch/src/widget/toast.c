@@ -315,7 +315,7 @@ void myui_toast_show(myui_toast_type_t type, const char *text)
     }
     lv_ext_set_local_font(item->text, FONT_SUBTITLE,
                           lv_obj_get_style_text_color(item->text, 0));
-    lv_obj_set_style_text_align(item->text, LV_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_align(item->text, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_center(item->text);
 
     toast_insert_back(item);

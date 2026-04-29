@@ -23,7 +23,7 @@
 #define DBG_LVL DBG_INFO
 #include <rtdbg.h>
 
-#define TIME_SCALE 200 // 200ms¼ì²éÒ»´ÎRTC
+#define TIME_SCALE 200 // 200msæ£€æŸ¥ä¸€æ¬¡RTC
 #define CLOCK_TEMPERATURE_DEV "temp_aht20"
 #define CLOCK_TEMP_MIN_C (-20.0f)
 #define CLOCK_TEMP_MAX_C (40.0f)
@@ -36,7 +36,7 @@ static dm_date_time_t dt_last = {0};
 static const char *week_day_str[] = {"SUN", "MON", "TUE", "WED",
                                      "THU", "FRI", "SAT"};
 
-/* ================= ĞÇÆÚ¼ÆËã ================= */
+/* ================= æ˜ŸæœŸè®¡ç®— ================= */
 
 int get_weekday(int year, int month, int day)
 {
@@ -46,7 +46,7 @@ int get_weekday(int year, int month, int day)
     return (year + year / 4 - year / 100 + year / 400 + t[month - 1] + day) % 7;
 }
 
-/* ================= ÃëÕë¶¯»­ ================= */
+/* ================= ç§’é’ˆåŠ¨ç”» ================= */
 
 static void sec_anim_cb(void *img, int32_t v)
 {
@@ -63,7 +63,7 @@ static void start_second_anim(uint8_t sec)
 
     lv_anim_set_var(&a, objects.img_corona_second);
     lv_anim_set_exec_cb(&a, sec_anim_cb);
-    lv_anim_set_time(&a, 1000); // 1Ãë
+    lv_anim_set_time(&a, 1000); // 1ç§’
     lv_anim_set_values(&a, start, end);
     lv_anim_set_path_cb(&a, lv_anim_path_linear);
     lv_anim_set_repeat_count(&a, 0);
@@ -77,7 +77,7 @@ static void frush_time()
 
     dm_get_date_time(&dt_now);
 
-    /* Ãë±ä»¯ */
+    /* ç§’å˜åŒ– */
     if (dt_now.second != dt_last.second)
     {
         start_second_anim(dt_now.second);
@@ -89,7 +89,7 @@ static void frush_time()
         lv_img_set_angle(objects.img_corona_minute,
                          dt_now.minute * 60 + dt_now.second);
 
-    /* ·ÖÖÓ±ä»¯ */
+    /* åˆ†é’Ÿå˜åŒ– */
     if (dt_now.minute != dt_last.minute)
     {
         rt_sprintf(buf, "%02d", dt_now.minute);
@@ -98,7 +98,7 @@ static void frush_time()
         dt_last.minute = dt_now.minute;
     }
 
-    /* Ğ¡Ê±±ä»¯ */
+    /* å°æ—¶å˜åŒ– */
     if (dt_now.hour != dt_last.hour)
     {
         rt_sprintf(buf, "%02d", dt_now.hour);
@@ -107,7 +107,7 @@ static void frush_time()
         dt_last.hour = dt_now.hour;
     }
 
-    /* ÈÕÆÚ±ä»¯ */
+    /* æ—¥æœŸå˜åŒ– */
     if (dt_now.day != dt_last.day || dt_now.month != dt_last.month ||
         dt_now.year != dt_last.year)
     {
@@ -161,14 +161,14 @@ static void frush_temperature_status()
 
     if (temperature_sensor_dev == RT_NULL)
     {
-        lv_label_set_text(objects.label_temperature_val, "--¡æ");
+        lv_label_set_text(objects.label_temperature_val, "--â„ƒ");
         return;
     }
 
     if (rt_device_read(temperature_sensor_dev, 0, &data, 1) < 1 ||
         data.type != RT_SENSOR_CLASS_TEMP)
     {
-        lv_label_set_text(objects.label_temperature_val, "--¡æ");
+        lv_label_set_text(objects.label_temperature_val, "--â„ƒ");
         return;
     }
 
@@ -189,14 +189,13 @@ static void frush_temperature_status()
     blue = (uint8_t)(255 + (48 - 255) * ratio + 0.5f);
     arc_color = lv_color_make(red, green, blue);
     lv_obj_set_style_arc_color(objects.arc_temperature_status, arc_color,
-                               LV_PART_MAIN);
-    lv_obj_set_style_arc_color(objects.arc_temperature_status, arc_color,
-                               LV_PART_INDICATOR);
+        LV_PART_INDICATOR);
 
-    lv_label_set_text_fmt(objects.label_temperature_val, "%.1f¡æ", temp_c);
+    rt_sprintf(buf, "%.1fâ„ƒ", temp_c);
+    lv_label_set_text(objects.label_temperature_val, buf);
 }
 
-/* ================= Ö÷Ë¢ĞÂÂß¼­ ================= */
+/* ================= ä¸»åˆ·æ–°é€»è¾‘ ================= */
 
 static void frush_clock_ui_cb(struct _lv_timer_t *t)
 {
@@ -205,7 +204,7 @@ static void frush_clock_ui_cb(struct _lv_timer_t *t)
     frush_temperature_status();
 }
 
-/* ================= UI³õÊ¼»¯ ================= */
+/* ================= UIåˆå§‹åŒ– ================= */
 
 static void start_frush_timer(void)
 {
@@ -215,7 +214,7 @@ static void start_frush_timer(void)
     lv_timer_set_repeat_count(frush_timer, -1);
 }
 
-/* ================= ÉúÃüÖÜÆÚ ================= */
+/* ================= ç”Ÿå‘½å‘¨æœŸ ================= */
 extern const lv_img_dsc_t img_img_corona_second;
 static void on_start(void)
 {
@@ -279,7 +278,7 @@ static void on_stop(void)
     }
 }
 
-/* ================= ÏûÏ¢´¦Àí ================= */
+/* ================= æ¶ˆæ¯å¤„ç† ================= */
 
 static void msg_handler(gui_app_msg_type_t msg, void *param)
 {

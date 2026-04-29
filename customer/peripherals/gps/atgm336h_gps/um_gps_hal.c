@@ -94,6 +94,7 @@ static GpsStatus umGpsStatus;
 static void gps_thread_entry(void *param);
 
 static struct rt_semaphore rx_sem;
+static rt_bool_t rx_sem_inited = RT_FALSE;
 rt_thread_t gps_thread = NULL;
 
 static rt_err_t gps_uart_input(rt_device_t dev, rt_size_t size) {
@@ -177,7 +178,10 @@ int gps_hal_start(GpsCallbacks *callbacks) {
         // gps_uart_open(gps_uart_cb);
         rt_device_set_rx_indicate(gps_uart, gps_uart_input);
         // rt_sem_take(&rx_sem, RT_WAITING_FOREVER);
-        rt_sem_init(&rx_sem, "rx_sem", 0, RT_IPC_FLAG_FIFO);
+        if (!rx_sem_inited) {
+            rt_sem_init(&rx_sem, "rx_sem", 0, RT_IPC_FLAG_FIFO);
+            rx_sem_inited = RT_TRUE;
+        }
         gpsHalState = GPS_HAL_STATE_STARTED;
         gps_thread = rt_thread_create("gps", gps_thread_entry, NULL, 4096,
                                       RT_MAIN_THREAD_PRIORITY, 10);
@@ -214,12 +218,17 @@ int gps_hal_stop(void) {
         if ((gpsHalState & GPS_HAL_STATE_STARTED) ||
             (gpsHalState & GPS_HAL_STATE_INIT)) {
             // gps_uart_close(true);
+            rt_device_set_rx_indicate(gps_uart, NULL);
             rt_device_close(gps_uart);
             gps_uart = NULL;
         }
         if (gps_thread != NULL) {
             rt_thread_delete(gps_thread);
             gps_thread = NULL;
+        }
+        if (rx_sem_inited) {
+            rt_sem_detach(&rx_sem);
+            rx_sem_inited = RT_FALSE;
         }
         gpsHalState = GPS_HAL_STATE_STOPPED;
         ret = 0;

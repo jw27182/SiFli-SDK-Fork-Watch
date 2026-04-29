@@ -91,7 +91,7 @@ static int um_gps_power_set(rt_bool_t enable) {
         rt_device_write(device, 0, &st, sizeof(struct rt_device_pin_status));
     } else {
         st.pin = GPS_POWER_BIT;
-        st.status = 1;
+        st.status = 0;
         rt_device_write(device, 0, &st, sizeof(struct rt_device_pin_status));
     }
 

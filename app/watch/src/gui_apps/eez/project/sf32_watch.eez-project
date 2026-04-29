@@ -4775,7 +4775,7 @@
                   "type": "LVGLLabelWidget",
                   "left": 0,
                   "top": 0,
-                  "width": 38,
+                  "width": 52,
                   "height": 27,
                   "customInputs": [],
                   "customOutputs": [],
@@ -4817,7 +4817,7 @@
                   },
                   "group": "",
                   "groupIndex": 0,
-                  "text": "--℃",
+                  "text": "--.-℃",
                   "textType": "literal",
                   "longMode": "WRAP",
                   "recolor": false
