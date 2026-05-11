@@ -1,6 +1,6 @@
 ---
 name: sifli-sf32-watch-sdk
-description: Builds, flashes, and debugs the SiFli SF32LB52 watch firmware in this repo via make.sh, scons, sftool, serial scripts (batch/assistant/debug), and GH3018 hbd pipeline. Use for sf32lb52-watch, compilation, flashing, UART/MSH automation, GH3018/Goodix sensor, or MEMORY ERROR / algo pool issues.
+description: Builds, flashes, and debugs the SiFli SF32LB52 watch firmware via source export.sh, scons in app/watch/project, sftool write_flash, make.sh, serial scripts (batch/assistant/debug), and GH3018 hbd. Use for sf32lb52-watch, compile timeouts (avoid scons|tail), UART/MSH, GH3018, or MEMORY ERROR / algo pool issues.
 ---
 
 # SiFli SF32 手表工程（本仓库）
@@ -25,7 +25,8 @@ description: Builds, flashes, and debugs the SiFli SF32LB52 watch firmware in th
 
 **环境**
 
-- `make.sh` 通过 `tools/activate.py` 导出 SiFli 构建环境；脚本内的 Python 解释器路径与仓库路径为**本机相关**，换机需改 `eval "$(.../python .../activate.py ...)"` 与 `cd` 目标路径。
+- **推荐（可移植）**：在 **SDK 根目录** 执行 `source ./export.sh`（或 `. ./export.sh`）。该脚本会检测 bash/zsh、调用 `tools/activate.py --export` 并 `eval` 导出变量，与仓库内机制一致；**必须 source，不要 `bash export.sh`**（否则环境只作用于子 shell）。
+- **等价方式**：`eval "$(<venv 或系统 python> tools/activate.py --export --shell bash)"`（zsh 用 `--shell zsh`）。仓库根目录的 `make.sh` 若写死了本机 Python/SDK 路径，换机后需改路径或改用 `export.sh`。
 - 依赖：`scons`、`sftool`（激活后可用）；Python 建议安装 `pyserial`（`tools/requirements/requirements.core.txt`）。
 
 **烧录镜像与地址（与当前 `make.sh` 中 `write_flash` 一致）**
@@ -56,10 +57,31 @@ bash make.sh
 **仅编译（不烧录）**
 
 ```bash
-# 先按 make.sh 第一行方式激活环境，再：
+cd /path/to/SiFli-SDK
+. ./export.sh
 cd app/watch/project
 scons --board=sf32lb52-watch -j16
 ```
+
+**烧录（示例，与常见 `make.sh` / IDE 任务一致）**
+
+在已 `source export.sh` 的同一 shell 中：
+
+```bash
+sftool -p /dev/ttyACM0 -c SF32LB52 -b 1000000 -m nor write_flash --verify \
+  "build_sf32lb52-watch_hcpu/ftab/ftab.bin@0x12000000" \
+  "build_sf32lb52-watch_hcpu/bootloader/bootloader.bin@0x12010000" \
+  "build_sf32lb52-watch_hcpu/main.bin@0x12020000"
+```
+
+（若在 `app/watch/project` 下执行，可用上述相对路径；否则写全路径到 `build_sf32lb52-watch_hcpu/...`。）
+
+**为何 Agent/自动化里编译像「超时」、一直无输出**
+
+- **`scons ... | tail -80` 尤其有害**：对管道上的 `tail -N`，常见实现要等上游 **进程结束** 才能确定「最后 N 行」，因此 **整趟编译完成前几乎没有任何输出**，再叠加 Cursor 默认命令超时，会被误判为卡死。
+- 一般也不要把长时间运行的 `scons` 接到只消费末尾的管道；stdout 接到管道时子进程还可能 **块缓冲**，进一步推迟可见输出。
+- **正确做法**：直接运行 `scons ...`；若需留档可用 `scons ... 2>&1 | tee build.log`（避免再用 `tail` 截断长时间任务）；或后台跑 `scons` 并读终端/日志文件。
+- 给自动化预留足够等待时间（例如 **≥ 10 分钟**），手表工程全量编译通常远长于 3 分钟。
 
 ---
 
@@ -119,7 +141,9 @@ bash scripts/gh3018_full_pipeline.sh
 
 ## Agent 执行建议
 
-- **编译 + 烧录**：仓库根目录 `bash make.sh`（或用户已改写的等价脚本）。
+- **加载环境**：优先在 SDK 根目录 `source ./export.sh`，再 `cd app/watch/project` 执行 `scons`/`sftool`；避免依赖未改路径的 `make.sh`（其中可能硬编码他机 Python 路径）。
+- **编译 + 烧录**：`bash make.sh`（已按本机修好路径时）或：`source export.sh` → `scons` → `sftool write_flash ...`。
+- **在 Cursor 里跑编译**：**不要** `scons ... | tail -80` 这类管道；用裸 `scons` 或 `| tee`，并把等待上限调到 **600000 ms 量级**（或后台运行 + 读终端日志文件）。
 - **只看串口 / 手动 MSH**：`sifli_serial_debug.py` 或 `scripts/sifli_serial_assistant.py`。
 - **自动化串口 / 回归 GH3018**：`scripts/gh3018_full_pipeline.sh` 或直接用 `sifli_serial_batch.py` 传命令列表。
 - **改表盘 / GUI**：`app/watch/src/`，EEZ 工程见 `app/watch/src/gui_apps/eez/` 与 `app/watch/README.md`。

@@ -18,3 +18,9 @@ _*/
 # Allow tracking everything under tools/build
 !tools/build/
 !tools/build/**
+
+.cursor
+.cache
+compile_commands.json
+app/watch/src/gui_apps/eez/*.c
+app/watch/src/gui_apps/eez/*.h
