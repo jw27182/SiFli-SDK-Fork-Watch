@@ -182,8 +182,13 @@ int gnss_manager_sync_utc_to_rtc_async(gnss_manager_sync_success_cb_t on_success
 
 static int gps_init(void)
 {
-    return um_gps_init();
-    gnss_manager_close();
+    int ret = um_gps_init();
+    if (ret != RT_EOK) {
+        LOG_E("gps init failed: %d", ret);
+        return ret;
+    }
+    gnss_manager_open();
+    return gnss_manager_close();
 }
 
 INIT_DEVICE_EXPORT(gps_init);
