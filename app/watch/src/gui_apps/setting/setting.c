@@ -4,6 +4,7 @@
 
 #include <rtdevice.h>
 #include <rtthread.h>
+#include <stdbool.h>
 
 #include "app_mem.h"
 #include "brightness_manager.h"
@@ -26,6 +27,17 @@
 
 static rt_bool_t g_setting_slider_syncing = RT_FALSE;
 #define SETTING_DEV_PAGE_ID "setting_dev"
+
+extern void watch_pm_set_auto_screen_off(bool enabled);
+extern void watch_pm_set_auto_screen_off_time(uint32_t timeout_ms);
+
+static const uint32_t g_auto_screen_off_times_ms[] = {
+    10 * 1000,
+    30 * 1000,
+    60 * 1000,
+    3 * 60 * 1000,
+    5 * 60 * 1000,
+};
 
 static void setting_sync_utc_time_success_cb(const dm_date_time_t *utc_time,
                                              void *user_data) {
@@ -154,6 +166,61 @@ void action_on_auto_brightness_clicked(lv_event_t *e)
     rt_bool_t checked = lv_obj_has_state(sw, LV_STATE_CHECKED);
     brightness_manager_set_auto_enabled(checked);
 }
+
+void action_auto_screen_off_time_change(lv_event_t *e)
+{
+    uint16_t selected = lv_dropdown_get_selected(lv_event_get_target(e));
+
+    if (selected < sizeof(g_auto_screen_off_times_ms) / sizeof(g_auto_screen_off_times_ms[0])) {
+        watch_pm_set_auto_screen_off_time(g_auto_screen_off_times_ms[selected]);
+        watch_pm_set_auto_screen_off(true);
+    } else {
+        watch_pm_set_auto_screen_off(false);
+    }
+}
+
+static void style_auto_screen_off_time_list(lv_obj_t *dropdown)
+{
+    lv_obj_t *list = lv_dropdown_get_list(dropdown);
+
+    if (!list || !lv_obj_is_valid(list)) return;
+
+    lv_obj_set_style_bg_color(list, lv_color_hex(0x1c1c1c), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(list, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_radius(list, 24, LV_PART_MAIN);
+    lv_obj_set_style_border_width(list, 1, LV_PART_MAIN);
+    lv_obj_set_style_border_color(list, lv_color_hex(0x303030), LV_PART_MAIN);
+    lv_obj_set_style_pad_left(list, 24, LV_PART_MAIN);
+    lv_obj_set_style_pad_right(list, 18, LV_PART_MAIN);
+    lv_obj_set_style_pad_top(list, 10, LV_PART_MAIN);
+    lv_obj_set_style_pad_bottom(list, 10, LV_PART_MAIN);
+    lv_obj_set_style_text_color(list, lv_color_hex(0xe8e8e8), LV_PART_MAIN);
+    lv_obj_set_style_text_line_space(list, 10, LV_PART_MAIN);
+    lv_obj_set_style_max_height(list, 230, LV_PART_MAIN);
+
+    lv_obj_set_style_bg_opa(list, LV_OPA_TRANSP, LV_PART_SELECTED | LV_STATE_CHECKED);
+    lv_obj_set_style_text_color(list, lv_color_hex(0xf2c96d), LV_PART_SELECTED | LV_STATE_CHECKED);
+    lv_obj_set_style_bg_color(list, lv_color_hex(0x2a2a2a), LV_PART_SELECTED | LV_STATE_PRESSED);
+    lv_obj_set_style_bg_opa(list, LV_OPA_70, LV_PART_SELECTED | LV_STATE_PRESSED);
+    lv_obj_set_style_text_color(list, lv_color_hex(0xffffff), LV_PART_SELECTED | LV_STATE_PRESSED);
+
+    lv_obj_set_style_width(list, 4, LV_PART_SCROLLBAR | LV_STATE_DEFAULT);
+    lv_obj_set_style_height(list, 0, LV_PART_SCROLLBAR | LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_top(list, 6, LV_PART_SCROLLBAR | LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_bottom(list, 6, LV_PART_SCROLLBAR | LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_left(list, 6, LV_PART_SCROLLBAR | LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_right(list, 6, LV_PART_SCROLLBAR | LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_row(list, 0, LV_PART_SCROLLBAR | LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_column(list, 0, LV_PART_SCROLLBAR | LV_STATE_DEFAULT);
+}
+
+static void on_auto_screen_off_time_dropdown_ready(lv_event_t *e)
+{
+    if (lv_event_get_code(e) == LV_EVENT_READY) {
+        style_auto_screen_off_time_list(lv_event_get_target(e));
+    }
+}
+
 void action_on_brightness_add_clicked(lv_event_t *e)
 {
     (void)e;
@@ -197,6 +264,16 @@ void action_on_developer_mode_show_toast_warning(lv_event_t * e)
 static void create_ui(void)
 {
     create_screen_setting();
+
+    if (objects.dropdown_auto_screen_off_time &&
+        lv_obj_is_valid(objects.dropdown_auto_screen_off_time)) {
+        lv_dropdown_set_symbol(objects.dropdown_auto_screen_off_time, NULL);
+        lv_obj_set_style_text_align(objects.dropdown_auto_screen_off_time,
+                                    LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
+        lv_obj_add_event_cb(objects.dropdown_auto_screen_off_time,
+                            on_auto_screen_off_time_dropdown_ready,
+                            LV_EVENT_READY, NULL);
+    }
 }
 
 static void on_start(void)

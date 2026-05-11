@@ -25,7 +25,7 @@
 #define BACK_CTRL_PIN    (BSP_KEY2_PIN)
 
 #define LCD_DEVICE_NAME  "lcd"
-#define IDLE_TIME_LIMIT  (10000)
+#define DEFAULT_IDLE_TIME_LIMIT  (10000)
 
 typedef enum
 {
@@ -45,6 +45,11 @@ static rt_device_t lcd_device;
 static lv_timer_t *button_event_task;
 static struct rt_event btn_event;
 static lv_obj_t *mbox;
+
+#ifdef BSP_USING_PM
+static bool auto_screen_off_enabled = true;
+static uint32_t auto_screen_off_ms = DEFAULT_IDLE_TIME_LIMIT;
+#endif /* BSP_USING_PM */
 
 /*Compatible with private lib*/
 uint32_t g_mainmenu[2];
@@ -309,7 +314,8 @@ static void button_event_task_entry(struct _lv_timer_t *task)
     rt_uint32_t evt;
     rt_err_t err;
 
-    if (lv_disp_get_inactive_time(NULL) > IDLE_TIME_LIMIT)
+    if (auto_screen_off_enabled &&
+            (lv_disp_get_inactive_time(NULL) > auto_screen_off_ms))
     {
         gui_pm_fsm(GUI_PM_ACTION_SLEEP);
     }
@@ -326,6 +332,16 @@ static void button_event_task_entry(struct _lv_timer_t *task)
         lv_disp_trig_activity(NULL);
         show_shutdown_msgbox();
     }
+}
+
+void watch_pm_set_auto_screen_off(bool enabled)
+{
+    auto_screen_off_enabled = enabled;
+}
+
+void watch_pm_set_auto_screen_off_time(uint32_t timeout_ms)
+{
+    auto_screen_off_ms = timeout_ms;
 }
 
 static void pm_event_handler(gui_pm_event_type_t event)
