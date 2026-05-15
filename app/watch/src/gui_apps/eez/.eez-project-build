@@ -16,6 +16,7 @@
     "ui_image_img_corona_minute.c",
     "ui_image_img_corona_second.c",
     "ui_image_img_enter.c",
+    "ui_image_img_expand_up__and_down.c",
     "ui_image_img_minutes_mask.c",
     "ui_image_img_shutdown.c",
     "ui_image_img_sync.c",

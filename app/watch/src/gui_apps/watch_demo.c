@@ -47,7 +47,7 @@ static struct rt_event btn_event;
 static lv_obj_t *mbox;
 
 #ifdef BSP_USING_PM
-static bool auto_screen_off_enabled = true;
+static bool auto_screen_off_enabled = false;
 static uint32_t auto_screen_off_ms = DEFAULT_IDLE_TIME_LIMIT;
 #endif /* BSP_USING_PM */
 
