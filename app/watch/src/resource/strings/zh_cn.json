@@ -60,5 +60,8 @@
     "compass_cal_success": "校准完成",
     "compass_cal_fail": "校准失败,请重试",
     "compass_cal_need_turn": "请点击校准并慢转一圈",
-    "compass_interference": "磁干扰较强"
+    "compass_interference": "磁干扰较强",
+    "calculator": "计算器",
+    "timer": "计时器",
+    "game": "游戏"
 }

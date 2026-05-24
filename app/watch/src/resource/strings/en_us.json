@@ -59,5 +59,8 @@
     "compass_cal_success": "Calibration OK",
     "compass_cal_fail": "Calibration failed, retry",
     "compass_cal_need_turn": "Tap calibrate and rotate one turn",
-    "compass_interference": "Magnetic interference"
+    "compass_interference": "Magnetic interference",
+    "calculator": "Calculator",
+    "timer": "Timer",
+    "game": "Game"
 }
