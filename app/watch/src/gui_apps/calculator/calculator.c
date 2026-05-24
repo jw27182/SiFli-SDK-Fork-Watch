@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdbool.h>
 #include <rtthread.h>
 #include <rtdevice.h>
 
@@ -14,307 +15,505 @@
 #include "lv_ext_resource_manager.h"
 #include "lvgl.h"
 #include "lvsf_comp.h"
+#include "my_widget.h"
+#include "vibrator_manager.h"
+#include "bignum_calc.h"
 
-#define SCR_W 410
-#define SCR_H 502
-#define MAX_NUM 10
+#define SCR_W LV_HOR_RES_MAX
+#define SCR_H LV_VER_RES_MAX
+#define MAX_INPUT_LEN 40       /* 输入缓冲区最大长度 */
 
-static lv_obj_t *ta = NULL;
-static lv_obj_t *my_btnm = NULL;
-static char result[MAX_NUM];
-static char error = 0;
-static double before = 0;
-static char operate = '\0';
-static char num[MAX_NUM];
+/* 全局UI对象 */
+static lv_obj_t *display_label = NULL;
+static lv_obj_t *btnm = NULL;
 
-static double save_num(char *num)
+/* 当前选中的运算符按钮ID，-1表示无 */
+static int16_t selected_op_btn_id = -1;
+
+/* 计算器状态 */
+typedef struct {
+    bignum_val_t current_value;     /* 当前显示的值 */
+    bignum_val_t stored_value;      /* 存储的值（用于连续运算） */
+    char display_str[64];           /* 显示字符串 */
+    char input_str[MAX_INPUT_LEN];  /* 输入缓冲区 */
+    char pending_op;                /* 待执行的运算符 */
+    bool has_input;                 /* 是否有新输入 */
+    bool error_state;               /* 错误状态 */
+    bool just_calculated;           /* 刚刚完成计算 */
+} calc_state_t;
+
+static calc_state_t calc;
+
+/* 根据文本长度自动选择合适的字体大小 */
+static void adjust_font_by_length(const char *text)
 {
-    return atof(num);
+    int len = strlen(text);
+    uint16_t font_size;
+    if (len <= 8) {
+        font_size = FONT_HUGE;
+    } else if (len <= 12) {
+        font_size = FONT_BIGL;
+    } else if (len <= 16) {
+        font_size = FONT_TITLE;
+    } else {
+        font_size = FONT_SUBTITLE;
+    }
+    lv_ext_set_local_font(display_label, font_size, lv_color_hex(0xe8e8e8));
 }
 
-static char judge_num(double num)
+/* 更新显示 */
+static void update_display(void)
 {
-    char n[100];
-    sprintf(n, "%g", num);
-    if (strlen(n) < MAX_NUM)
-        return 0;
-    else
-        return 1;
-}
+    if (!display_label || !lv_obj_is_valid(display_label)) return;
 
-static void calculate(double before, double now, char operate, char *num)
-{
-    double result = now;
-    switch (operate) {
-    case '+':
-        result = before + now;
-        break;
-    case '-':
-        result = before - now;
-        break;
-    case '*':
-        result = before * now;
-        break;
-    case '/':
-        if (now == 0.0) {
-            strcpy(num, "EOR");
+    if (calc.error_state) {
+        lv_label_set_text(display_label, "Error");
+        adjust_font_by_length("Error");
+        return;
+    }
+
+    const char *text_to_show = NULL;
+
+    if (calc.has_input && calc.input_str[0] != '\0') {
+        text_to_show = calc.input_str;
+        /* 检查输入长度是否接近上限 */
+        if (strlen(calc.input_str) >= MAX_INPUT_LEN - 5) {
+            myui_toast_show(MYUI_TOAST_TYPE_TIP, "输入接近最大长度");
+        }
+    } else {
+        /* 格式化并显示计算结果 */
+        bignum_err_t err = bignum_val_to_str(&calc.current_value,
+                                              calc.display_str,
+                                              sizeof(calc.display_str));
+        if (err == BIGNUM_OK) {
+            text_to_show = calc.display_str;
+        } else {
+            lv_label_set_text(display_label, "Error");
+            adjust_font_by_length("Error");
+            calc.error_state = true;
             return;
         }
-        result = before / now;
+    }
+
+    if (text_to_show) {
+        adjust_font_by_length(text_to_show);
+        lv_label_set_text(display_label, text_to_show);
+    }
+}
+
+/* 执行计算 */
+static void perform_calculation(void)
+{
+    if (calc.pending_op == '\0' || calc.error_state) return;
+
+    bignum_val_t operand;
+    bignum_val_init(&operand);
+
+    if (calc.has_input && calc.input_str[0] != '\0') {
+        bignum_err_t err = bignum_val_from_str(&operand, calc.input_str);
+        if (err != BIGNUM_OK) {
+            myui_toast_show(MYUI_TOAST_TYPE_TIP, "输入无效");
+            bignum_val_free(&operand);
+            calc.error_state = true;
+            return;
+        }
+    } else {
+        bignum_val_copy(&operand, &calc.current_value);
+    }
+
+    bignum_val_t result;
+    bignum_val_init(&result);
+    bignum_err_t err = BIGNUM_OK;
+
+    switch (calc.pending_op) {
+    case '+':
+        err = bignum_val_add(&result, &calc.stored_value, &operand);
         break;
-    default:
+    case '-':
+        err = bignum_val_sub(&result, &calc.stored_value, &operand);
+        break;
+    case '*':
+        err = bignum_val_mul(&result, &calc.stored_value, &operand);
+        break;
+    case '/':
+        if (bignum_val_is_zero(&operand)) {
+            myui_toast_show(MYUI_TOAST_TYPE_TIP, "不能除以零");
+            bignum_val_free(&operand);
+            bignum_val_free(&result);
+            calc.error_state = true;
+            return;
+        }
+        err = bignum_val_div(&result, &calc.stored_value, &operand);
         break;
     }
-    snprintf(num, MAX_NUM, "%g", result);
+
+    bignum_val_free(&operand);
+
+    if (err != BIGNUM_OK) {
+        myui_toast_show(MYUI_TOAST_TYPE_TIP, "计算溢出");
+        bignum_val_free(&result);
+        calc.error_state = true;
+        return;
+    }
+
+    bignum_val_free(&calc.current_value);
+    bignum_val_copy(&calc.current_value, &result);
+    bignum_val_free(&result);
+
+    calc.has_input = false;
+    calc.input_str[0] = '\0';
+    calc.just_calculated = true;
 }
 
-static void clear_result(void)
+/* 处理数字输入 */
+static void handle_digit(const char *digit)
 {
-    memset(result, 0, MAX_NUM);
-    memset(num, 0, MAX_NUM);
-    before = 0;
-    error = 0;
-    operate = '\0';
+    if (calc.error_state) return;
+
+    if (calc.just_calculated) {
+        /* 刚完成计算，开始新的输入 */
+        calc.input_str[0] = '\0';
+        calc.just_calculated = false;
+    }
+
+    size_t len = strlen(calc.input_str);
+    if (len < sizeof(calc.input_str) - 1) {
+        calc.input_str[len] = digit[0];
+        calc.input_str[len + 1] = '\0';
+        calc.has_input = true;
+    } else {
+        myui_toast_show(MYUI_TOAST_TYPE_TIP, "输入长度超限");
+    }
 }
 
-static void handle_button_text(const char *txt)
+/* 处理小数点 */
+static void handle_decimal(void)
 {
-    volatile double now = 0;
+    if (calc.error_state) return;
 
-    if (error == 0) {
-        switch (txt[0]) {
-        case '=':
-            if (judge_num(before) == 0) {
-                now = save_num(num);
-                calculate(before, now, operate, num);
-                operate = '\0';
-                before = save_num(num);
-            } else {
-                error = 1;
-                lv_textarea_set_text(ta, "EOR");
+    if (calc.just_calculated) {
+        strcpy(calc.input_str, "0.");
+        calc.just_calculated = false;
+        calc.has_input = true;
+        return;
+    }
+
+    if (!calc.has_input || calc.input_str[0] == '\0') {
+        strcpy(calc.input_str, "0.");
+        calc.has_input = true;
+    } else if (strchr(calc.input_str, '.') == NULL) {
+        size_t len = strlen(calc.input_str);
+        if (len < sizeof(calc.input_str) - 1) {
+            calc.input_str[len] = '.';
+            calc.input_str[len + 1] = '\0';
+        }
+    } else {
+        myui_toast_show(MYUI_TOAST_TYPE_TIP, "已有小数点");
+    }
+}
+
+/* 取消所有运算符按钮的高亮 */
+static void uncheck_all_op_btns(void)
+{
+    if (!btnm || !lv_obj_is_valid(btnm)) return;
+
+    for (int i = 3; i <= 15; i += 4) {
+        lv_btnmatrix_clear_btn_ctrl(btnm, i, LV_BTNMATRIX_CTRL_CHECKED);
+    }
+    selected_op_btn_id = -1;
+}
+
+/* 高亮指定运算符按钮 */
+static void check_op_btn(int id)
+{
+    if (!btnm || !lv_obj_is_valid(btnm)) return;
+
+    uncheck_all_op_btns();
+    if (id >= 0 && id <= 15) {
+        lv_btnmatrix_set_btn_ctrl(btnm, id, LV_BTNMATRIX_CTRL_CHECKED);
+        selected_op_btn_id = id;
+    }
+}
+
+/* 处理运算符 */
+static void handle_operator(char op, int btn_id)
+{
+    if (calc.error_state) return;
+
+    if (calc.pending_op != '\0' && calc.has_input) {
+        /* 连续运算：先算出前一步结果 */
+        perform_calculation();
+        if (calc.error_state) return;
+        /* 用计算结果作为下一步的左操作数 */
+        bignum_val_copy(&calc.stored_value, &calc.current_value);
+    } else if (calc.has_input) {
+        /* 第一次按运算符：将输入的数字存为左操作数 */
+        bignum_val_from_str(&calc.stored_value, calc.input_str);
+    } else {
+        /* 刚算完结果后按运算符：用当前结果作为左操作数 */
+        bignum_val_copy(&calc.stored_value, &calc.current_value);
+    }
+
+    calc.pending_op = op;
+    calc.has_input = false;
+    calc.input_str[0] = '\0';
+    calc.just_calculated = false;
+
+    /* 高亮当前运算符按钮 */
+    check_op_btn(btn_id);
+}
+
+/* 处理等号 */
+static void handle_equal(void)
+{
+    if (calc.error_state) return;
+
+    if (calc.pending_op != '\0') {
+        perform_calculation();
+        calc.pending_op = '\0';
+    }
+}
+
+/* 处理清除 */
+static void handle_clear(void)
+{
+    bignum_val_set_zero(&calc.current_value);
+    bignum_val_set_zero(&calc.stored_value);
+    calc.display_str[0] = '\0';
+    calc.input_str[0] = '\0';
+    calc.pending_op = '\0';
+    calc.has_input = false;
+    calc.error_state = false;
+    calc.just_calculated = false;
+    uncheck_all_op_btns();
+}
+
+/* 处理退格 */
+static void handle_backspace(void)
+{
+    if (calc.error_state) return;
+
+    if (calc.has_input && calc.input_str[0] != '\0') {
+        size_t len = strlen(calc.input_str);
+        if (len > 0) {
+            calc.input_str[len - 1] = '\0';
+            if (calc.input_str[0] == '\0') {
+                calc.has_input = false;
             }
+        }
+    } else {
+        myui_toast_show(MYUI_TOAST_TYPE_TIP, "没有可删除的内容");
+    }
+}
+
+/* 处理正负号 */
+static void handle_sign(void)
+{
+    if (calc.error_state) return;
+
+    if (calc.has_input && calc.input_str[0] != '\0') {
+        if (calc.input_str[0] == '-') {
+            memmove(calc.input_str, calc.input_str + 1, strlen(calc.input_str));
+        } else {
+            size_t len = strlen(calc.input_str);
+            if (len < sizeof(calc.input_str) - 1) {
+                memmove(calc.input_str + 1, calc.input_str, len + 1);
+                calc.input_str[0] = '-';
+            }
+        }
+    } else if (bignum_val_is_zero(&calc.current_value)) {
+        myui_toast_show(MYUI_TOAST_TYPE_TIP, "当前值为0");
+    } else {
+        bignum_val_neg(&calc.current_value, &calc.current_value);
+    }
+}
+
+/* 处理百分号 */
+static void handle_percent(void)
+{
+    if (calc.error_state) return;
+
+    if (calc.has_input && calc.input_str[0] != '\0') {
+        bignum_val_t val;
+        bignum_val_init(&val);
+        bignum_err_t err = bignum_val_from_str(&val, calc.input_str);
+        if (err == BIGNUM_OK) {
+            bignum_err_t perr = bignum_val_percent(&val, &val);
+            if (perr == BIGNUM_OK) {
+                bignum_val_to_str(&val, calc.input_str, sizeof(calc.input_str));
+            }
+        }
+        bignum_val_free(&val);
+    } else if (bignum_val_is_zero(&calc.current_value)) {
+        myui_toast_show(MYUI_TOAST_TYPE_TIP, "当前值为0");
+    } else {
+        bignum_val_percent(&calc.current_value, &calc.current_value);
+    }
+}
+
+/* 按钮事件处理 */
+static void btn_event_handler(lv_event_t *e)
+{
+    lv_obj_t *obj = lv_event_get_target(e);
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+
+    /* 按键震动反馈：短时间、低强度 */
+    vibrator_send(50, 30);
+
+    uint16_t id = lv_btnmatrix_get_selected_btn(obj);
+    const char *txt = lv_btnmatrix_get_btn_text(obj, id);
+
+    if (!txt || txt[0] == '\0') return;
+
+    if (strcmp(txt, "+/-") == 0) {
+        handle_sign();
+        uncheck_all_op_btns();
+    } else if (strlen(txt) == 1) {
+        switch (txt[0]) {
+        case '0': case '1': case '2': case '3': case '4':
+        case '5': case '6': case '7': case '8': case '9':
+            handle_digit(txt);
+            uncheck_all_op_btns();
             break;
-        case 'D':
-            if (strlen(num) > 0)
-                num[strlen(num) - 1] = '\0';
+        case '.':
+            handle_decimal();
+            uncheck_all_op_btns();
             break;
         case '+':
+            handle_operator('+', id);
+            break;
         case '-':
+            handle_operator('-', id);
+            break;
         case 'x':
+            handle_operator('*', id);
+            break;
         case '/':
-            now = save_num(num);
-            if (operate != '\0') {
-                calculate(before, now, operate, num);
-                before = save_num(num);
-            } else {
-                before = now;
-            }
-            operate = (txt[0] == 'x') ? '*' : txt[0];
-            memset(num, 0, MAX_NUM);
+            handle_operator('/', id);
             break;
-        case ' ':
+        case '=':
+            handle_equal();
+            uncheck_all_op_btns();
             break;
-        default:
-            if (strlen(num) < MAX_NUM - 1)
-                num[strlen(num)] = txt[0];
+        case 'C':
+            handle_clear();
+            uncheck_all_op_btns();
+            break;
+        case 'D':
+            handle_backspace();
+            break;
+        case '%':
+            handle_percent();
             break;
         }
     }
-    if (txt[0] == 'C') {
-        clear_result();
-        now = 0;
+
+    update_display();
+}
+
+/* 创建显示区域 */
+static void create_display(lv_obj_t *parent)
+{
+    /* 显示标签 - 直接放在屏幕上，无背景色 */
+    display_label = lv_label_create(parent);
+    lv_obj_set_style_text_color(display_label, lv_color_hex(0xe8e8e8), LV_PART_MAIN);
+    lv_ext_set_local_font(display_label, FONT_HUGE, lv_color_hex(0xe8e8e8));
+    lv_label_set_text(display_label, "0");
+    lv_obj_set_style_text_align(display_label, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
+    lv_label_set_long_mode(display_label, LV_LABEL_LONG_SCROLL); /* 超长来回滚动显示 */
+    lv_obj_set_width(display_label, SCR_W - 60);
+    lv_obj_align(display_label, LV_ALIGN_TOP_MID, 0, 40);
+    lv_obj_set_style_pad_top(display_label, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_bottom(display_label, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(display_label, LV_OBJ_FLAG_SCROLLABLE);
+}
+
+/* 创建按钮矩阵 */
+static void create_buttons(lv_obj_t *parent)
+{
+    /* 按钮映射：5行4列 */
+    static const char *btn_map[] = {
+        "C", "D", "%", "/", "\n",
+        "7", "8", "9", "x", "\n",
+        "4", "5", "6", "-", "\n",
+        "1", "2", "3", "+", "\n",
+        "+/-", "0", ".", "=",
+        ""
+    };
+
+    btnm = lv_btnmatrix_create(parent);
+    lv_btnmatrix_set_map(btnm, btn_map);
+    lv_obj_set_size(btnm, SCR_W - 40, SCR_H - 130);
+    lv_obj_align(btnm, LV_ALIGN_BOTTOM_MID, 0, -30);
+
+    /* 背景样式 */
+    lv_obj_set_style_bg_color(btnm, lv_color_hex(0x000000), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(btnm, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_border_width(btnm, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(btnm, 5, LV_PART_MAIN);
+    lv_obj_set_style_pad_row(btnm, 5, LV_PART_MAIN);
+    lv_obj_set_style_pad_column(btnm, 5, LV_PART_MAIN);
+
+    /* 按键默认样式 - 对齐setting页风格 */
+    lv_obj_set_style_bg_color(btnm, lv_color_hex(0x1c1c1c), LV_PART_ITEMS);
+    lv_obj_set_style_bg_opa(btnm, LV_OPA_COVER, LV_PART_ITEMS);
+    lv_obj_set_style_radius(btnm, 15, LV_PART_ITEMS);
+    lv_obj_set_style_text_color(btnm, lv_color_hex(0xe8e8e8), LV_PART_ITEMS);
+    lv_obj_set_style_border_width(btnm, 1, LV_PART_ITEMS);
+    lv_obj_set_style_border_color(btnm, lv_color_hex(0x303030), LV_PART_ITEMS);
+    lv_obj_set_style_border_opa(btnm, LV_OPA_COVER, LV_PART_ITEMS);
+    lv_obj_set_style_shadow_width(btnm, 0, LV_PART_ITEMS);
+    lv_obj_set_style_text_font(btnm, LV_EXT_FONT_GET(FONT_SUBTITLE), LV_PART_ITEMS);
+
+    /* 按键按下样式 */
+    lv_obj_set_style_bg_color(btnm, lv_color_hex(0x2a2a2a), LV_PART_ITEMS | LV_STATE_PRESSED);
+    lv_obj_set_style_bg_opa(btnm, LV_OPA_COVER, LV_PART_ITEMS | LV_STATE_PRESSED);
+
+    /* 运算符列样式（第4列：/、x、-、+）：设置CHECKABLE并使用CHECKED样式实现高亮 */
+    for (int i = 3; i <= 15; i += 4) {
+        lv_btnmatrix_set_btn_ctrl(btnm, i, LV_BTNMATRIX_CTRL_CHECKABLE);
     }
-    lv_textarea_set_text(ta, num);
+    /* 运算符选中时高亮样式 */
+    lv_obj_set_style_bg_color(btnm, lv_color_hex(0x2d5a3d), LV_PART_ITEMS | LV_STATE_CHECKED);
+    lv_obj_set_style_text_color(btnm, lv_color_hex(0x55aa6c), LV_PART_ITEMS | LV_STATE_CHECKED);
+
+    /* 等号按钮特殊样式 - 使用深绿色背景 */
+    lv_obj_set_style_bg_color(btnm, lv_color_hex(0x1a4a2d), LV_PART_ITEMS);
+    lv_obj_set_style_text_color(btnm, lv_color_hex(0x55aa6c), LV_PART_ITEMS);
+
+    /* C和D按钮样式 */
+    lv_obj_set_style_bg_color(btnm, lv_color_hex(0x424145), LV_PART_ITEMS);
+    lv_obj_set_style_text_color(btnm, lv_color_hex(0xc0c0c0), LV_PART_ITEMS);
+
+    /* 添加事件回调 */
+    lv_obj_add_event_cb(btnm, btn_event_handler, LV_EVENT_CLICKED, NULL);
 }
 
-static void clear_handler(lv_event_t *event)
-{
-    if (lv_event_get_code(event) == LV_EVENT_CLICKED)
-        handle_button_text("C");
-}
-
-static void delete_handler(lv_event_t *event)
-{
-    if (lv_event_get_code(event) == LV_EVENT_CLICKED)
-        handle_button_text("D");
-}
-
-static void equal_handler(lv_event_t *event)
-{
-    if (lv_event_get_code(event) == LV_EVENT_CLICKED)
-        handle_button_text("=");
-}
-
-static void event_handler(lv_event_t *event)
-{
-    lv_obj_t *obj = lv_event_get_target(event);
-    if (lv_event_get_code(event) == LV_EVENT_CLICKED) {
-        uint16_t id = lv_btnmatrix_get_selected_btn(obj);
-        const char *txt = lv_btnmatrix_get_btn_text(obj, id);
-        handle_button_text(txt);
-    }
-}
-
-static void ta_event_cb(lv_event_t *event)
-{
-    (void)event;
-}
-
-static lv_obj_t *create_textarea(lv_obj_t *screen)
-{
-    lv_obj_t *ta = lv_textarea_create(screen);
-    lv_obj_add_event_cb(ta, ta_event_cb, LV_EVENT_ALL, NULL);
-    lv_textarea_set_accepted_chars(ta, "0123456789+-.*/EOR");
-    lv_textarea_set_max_length(ta, MAX_NUM);
-    lv_textarea_set_one_line(ta, true);
-    lv_textarea_set_text(ta, "");
-
-    lv_obj_set_style_bg_opa(ta, LV_OPA_TRANSP, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_text_color(ta, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_ext_set_local_font(ta, FONT_TITLE, lv_color_hex(0xFFFFFF));
-    lv_obj_set_style_text_align(ta, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_radius(ta, 10, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_pad_all(ta, 2, LV_PART_MAIN | LV_STATE_DEFAULT);
-
-    lv_obj_set_width(ta, lv_pct(53));
-    lv_obj_align(ta, LV_ALIGN_TOP_MID, 0, 50);
-
-    /* 清除按钮 */
-    lv_obj_t *clear_btn = lv_btn_create(screen);
-    lv_obj_set_size(clear_btn, 50, 50);
-    lv_obj_set_style_bg_opa(clear_btn, LV_OPA_TRANSP, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_shadow_width(clear_btn, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_align_to(clear_btn, ta, LV_ALIGN_OUT_LEFT_MID, 0, 0);
-    lv_obj_add_event_cb(clear_btn, clear_handler, LV_EVENT_CLICKED, NULL);
-
-    lv_obj_t *clear_label = lv_label_create(clear_btn);
-    lv_ext_set_local_font(clear_label, FONT_TITLE, lv_color_hex(0xC17E7C));
-    lv_label_set_text(clear_label, "C");
-    lv_obj_center(clear_label);
-
-    /* 删除按钮 */
-    lv_obj_t *float_btn = lv_btn_create(screen);
-    lv_obj_set_size(float_btn, 50, 50);
-    lv_obj_add_flag(float_btn, LV_OBJ_FLAG_FLOATING);
-    lv_obj_align_to(float_btn, ta, LV_ALIGN_OUT_RIGHT_MID, 0, 0);
-    lv_obj_add_event_cb(float_btn, delete_handler, LV_EVENT_CLICKED, NULL);
-    lv_obj_set_style_radius(float_btn, LV_RADIUS_CIRCLE, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_opa(float_btn, LV_OPA_TRANSP, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_shadow_width(float_btn, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
-
-    lv_obj_t *del_label = lv_label_create(float_btn);
-    lv_ext_set_local_font(del_label, FONT_NORMAL, lv_color_hex(0xFFFFFF));
-    lv_label_set_text(del_label, LV_SYMBOL_BACKSPACE);
-    lv_obj_center(del_label);
-
-    return ta;
-}
-
-static const lv_style_const_prop_t BTNM_BG_STYLE_PROPS[] = {
-    LV_STYLE_CONST_PAD_COLUMN(4),
-    LV_STYLE_CONST_PAD_ROW(4),
-    LV_STYLE_CONST_BG_COLOR(LV_COLOR_MAKE(0x00, 0x00, 0x00)),
-    LV_STYLE_CONST_BG_OPA(LV_OPA_TRANSP),
-    LV_STYLE_CONST_RADIUS(120),
-    LV_STYLE_PROP_INV,
-};
-
-static const lv_style_const_prop_t BTNM_KEY_STYLE_PROPS[] = {
-    LV_STYLE_CONST_RADIUS(15),
-    LV_STYLE_CONST_BG_COLOR(LV_COLOR_MAKE(0x33, 0x33, 0x33)),
-    LV_STYLE_CONST_TEXT_COLOR(LV_COLOR_MAKE(0xFF, 0xFF, 0xFF)),
-    LV_STYLE_CONST_BG_OPA(LV_OPA_TRANSP),
-    LV_STYLE_PROP_INV,
-};
-
-static const lv_style_const_prop_t BTNM_KEY_PRESSED_STYLE_PROPS[] = {
-    LV_STYLE_CONST_BG_COLOR(LV_COLOR_MAKE(0x4A, 0x4A, 0x4A)),
-    LV_STYLE_CONST_BG_OPA(LV_OPA_50),
-    LV_STYLE_PROP_INV,
-};
-
-LV_STYLE_CONST_INIT(BTNM_BG_STYLE, BTNM_BG_STYLE_PROPS);
-LV_STYLE_CONST_INIT(BTNM_KEY_STYLE, BTNM_KEY_STYLE_PROPS);
-LV_STYLE_CONST_INIT(BTNM_KEY_PRESSED_STYLE, BTNM_KEY_PRESSED_STYLE_PROPS);
-
-static const char *btnm_map[] = {
-    "7", "8", "9", "+", "\n",
-    "4", "5", "6", "-", "\n",
-    "1", "2", "3", "x", "\n",
-    " ", "0", ".", "/", ""
-};
-
-static lv_obj_t *create_btnmatrix(lv_obj_t *screen)
-{
-    lv_obj_t *btnm = lv_btnmatrix_create(screen);
-    lv_btnmatrix_set_map(btnm, btnm_map);
-
-    lv_obj_add_style(btnm, (lv_style_t *)&BTNM_BG_STYLE, LV_PART_MAIN);
-    lv_obj_add_style(btnm, (lv_style_t *)&BTNM_KEY_STYLE, LV_PART_ITEMS);
-    lv_obj_add_style(btnm, (lv_style_t *)&BTNM_KEY_PRESSED_STYLE,
-                     LV_PART_ITEMS | LV_STATE_PRESSED);
-
-    lv_obj_set_style_text_font(btnm, LV_EXT_FONT_GET(FONT_NORMAL),
-                               LV_PART_ITEMS);
-
-    lv_obj_set_style_text_color(btnm, lv_color_hex(0x3A6D7B),
-                                LV_PART_ITEMS | LV_STATE_CHECKED);
-    lv_obj_set_style_bg_color(btnm, lv_color_hex(0x000000),
-                              LV_PART_ITEMS | LV_STATE_CHECKED);
-    lv_obj_set_style_bg_opa(btnm, LV_OPA_TRANSP,
-                            LV_PART_ITEMS | LV_STATE_CHECKED);
-
-    lv_btnmatrix_set_btn_ctrl(btnm, 3, LV_BTNMATRIX_CTRL_CHECKED);
-    lv_btnmatrix_set_btn_ctrl(btnm, 7, LV_BTNMATRIX_CTRL_CHECKED);
-    lv_btnmatrix_set_btn_ctrl(btnm, 11, LV_BTNMATRIX_CTRL_CHECKED);
-    lv_btnmatrix_set_btn_ctrl(btnm, 15, LV_BTNMATRIX_CTRL_CHECKED);
-
-    lv_obj_add_event_cb(btnm, event_handler, LV_EVENT_ALL, NULL);
-
-    lv_obj_set_size(btnm, 340, 360);
-    lv_obj_align(btnm, LV_ALIGN_CENTER, -30, 50);
-
-    return btnm;
-}
-
-static lv_point_t _separator_line_points[] = {{0, 0}, {360, 0}};
-
+/* 创建计算器界面 */
 static void create_calculator_screen(lv_obj_t *scr)
 {
-    ta = create_textarea(scr);
+    /* 设置黑色背景 */
+    lv_obj_set_style_bg_color(scr, lv_color_hex(0x000000), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, LV_PART_MAIN);
 
-    lv_obj_t *line = lv_line_create(scr);
-    lv_line_set_points(line, _separator_line_points, 2);
-    lv_obj_set_style_line_color(line, lv_color_hex(0x404040),
-                                LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_line_width(line, 2, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_align_to(line, ta, LV_ALIGN_OUT_BOTTOM_MID, 0, 0);
+    /* 创建显示区域 */
+    create_display(scr);
 
-    my_btnm = create_btnmatrix(scr);
-
-    /* 等号按钮 */
-    lv_obj_t *equal_btn = lv_btn_create(scr);
-    lv_obj_set_size(equal_btn, 60, 120);
-    lv_obj_set_style_bg_color(equal_btn, lv_color_hex(0x3A6D7B),
-                              LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_opa(equal_btn, LV_OPA_COVER,
-                            LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_radius(equal_btn, 15, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_shadow_width(equal_btn, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_align(equal_btn, LV_ALIGN_RIGHT_MID, -30, 0);
-    lv_obj_add_event_cb(equal_btn, equal_handler, LV_EVENT_CLICKED, NULL);
-
-    lv_obj_t *equal_label = lv_label_create(equal_btn);
-    lv_ext_set_local_font(equal_label, FONT_TITLE, lv_color_hex(0xFFFFFF));
-    lv_label_set_text(equal_label, "=");
-    lv_obj_center(equal_label);
+    /* 创建按钮矩阵 */
+    create_buttons(scr);
 }
 
 static void on_start(void)
 {
     lv_obj_t *scr = lv_scr_act();
-    clear_result();
+
+    /* 初始化大数状态 */
+    bignum_val_init(&calc.current_value);
+    bignum_val_init(&calc.stored_value);
+
+    handle_clear();
     create_calculator_screen(scr);
+    update_display();
     lv_img_cache_invalidate_src(NULL);
 }
 
@@ -328,6 +527,13 @@ static void on_pause(void)
 
 static void on_stop(void)
 {
+    /* 释放大数资源 */
+    bignum_val_free(&calc.current_value);
+    bignum_val_free(&calc.stored_value);
+
+    /* 清理UI资源 */
+    display_label = NULL;
+    btnm = NULL;
 }
 
 static void msg_handler(gui_app_msg_type_t msg, void *param)
