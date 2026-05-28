@@ -40,9 +40,6 @@
 #define PROJECTILE_SPEED  12
 #define PROJECTILE_SIZE   24
 
-/* 双击检测间隔（ms） */
-#define DOUBLE_TAP_INTERVAL 350
-
 LV_IMG_DECLARE(img_dinosaur);
 LV_IMG_DECLARE(img_enemy);
 
@@ -95,7 +92,6 @@ static lv_obj_t *ground_line = NULL;
 static lv_obj_t *game_container = NULL;
 static lv_timer_t *game_timer = NULL;
 static int obstacle_spawn_timer = 0;
-static rt_tick_t last_tap_tick = 0;
 
 static void game_tick(lv_timer_t *timer);
 static void reset_game(void);
@@ -268,7 +264,7 @@ static void update_projectiles(void)
                         hit = true;
                         kills++;
                         score += 5;
-                        lv_label_set_text_fmt(kills_label, "Kills: %d", kills);
+                        lv_label_set_text_fmt(kills_label, "击杀: %d", kills);
                         lv_label_set_text_fmt(score_label, "%d", score);
                         break;
                     }
@@ -388,7 +384,7 @@ static void reset_game(void)
     }
 
     lv_label_set_text_fmt(score_label, "%d", score);
-    lv_label_set_text_fmt(kills_label, "Kills: %d", kills);
+    lv_label_set_text_fmt(kills_label, "击杀: %d", kills);
 }
 
 static void start_game(void)
@@ -420,28 +416,18 @@ static void screen_event_cb(lv_event_t *e)
         if (game_state == GAME_STATE_READY || game_state == GAME_STATE_OVER) {
             start_game();
         } else if (game_state == GAME_STATE_RUNNING) {
-            /* 双击检测：两次点击间隔 < DOUBLE_TAP_INTERVAL 则发射子弹 */
-            rt_tick_t now = rt_tick_get();
-            rt_tick_t diff =
-                now - last_tap_tick; /* tick 单位，不依赖 rt_tick_from_millisecond */
-            /* RT_TICK_PER_SECOND 约 1000，ms 和 tick 1:1 */
-            if (last_tap_tick != 0 &&
-                diff < (rt_tick_t)(DOUBLE_TAP_INTERVAL * RT_TICK_PER_SECOND /
-                                   1000)) {
-                dino_fire();
-                last_tap_tick = 0;
-            } else {
-                dino_jump();
-                last_tap_tick = now;
-            }
+            dino_jump();
         }
     }
 }
 
-static void exit_btn_event_cb(lv_event_t *e)
+static void fire_btn_event_cb(lv_event_t *e)
 {
-    if (lv_event_get_code(e) == LV_EVENT_CLICKED)
-        gui_app_self_exit();
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        if (game_state == GAME_STATE_RUNNING) {
+            dino_fire();
+        }
+    }
 }
 
 static void create_game_ui(lv_obj_t *parent)
@@ -466,24 +452,37 @@ static void create_game_ui(lv_obj_t *parent)
                                   LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_clear_flag(ground_line, LV_OBJ_FLAG_SCROLLABLE);
 
-    score_label = lv_label_create(game_container);
+    /* 分数和击杀数容器 */
+    lv_obj_t *score_container = lv_obj_create(game_container);
+    lv_obj_set_size(score_container, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    lv_obj_align(score_container, LV_ALIGN_TOP_MID, 0, 20);
+    lv_obj_set_style_bg_opa(score_container, LV_OPA_TRANSP, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_border_width(score_container, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_all(score_container, 5, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_clear_flag(score_container, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_flex_flow(score_container, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(score_container, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+    score_label = lv_label_create(score_container);
     lv_label_set_text(score_label, "0");
-    lv_obj_align(score_label, LV_ALIGN_TOP_RIGHT, -20, 20);
     lv_ext_set_local_font(score_label, FONT_TITLE, lv_color_hex(0xFFFFFF));
 
-    kills_label = lv_label_create(game_container);
-    lv_label_set_text(kills_label, "Kills: 0");
-    lv_obj_align(kills_label, LV_ALIGN_TOP_RIGHT, -20, 60);
+    lv_obj_t *separator = lv_label_create(score_container);
+    lv_label_set_text(separator, " | ");
+    lv_ext_set_local_font(separator, FONT_NORMAL, lv_color_hex(0xAAAAAA));
+
+    kills_label = lv_label_create(score_container);
+    lv_label_set_text(kills_label, "击杀: 0");
     lv_ext_set_local_font(kills_label, FONT_NORMAL, lv_color_hex(0xFF5555));
 
     game_over_label = lv_label_create(game_container);
-    lv_label_set_text(game_over_label, "GAME OVER");
+    lv_label_set_text(game_over_label, "游戏结束");
     lv_obj_align(game_over_label, LV_ALIGN_CENTER, 0, -40);
     lv_ext_set_local_font(game_over_label, FONT_TITLE, lv_color_hex(0xFF5555));
     lv_obj_add_flag(game_over_label, LV_OBJ_FLAG_HIDDEN);
 
     restart_label = lv_label_create(game_container);
-    lv_label_set_text(restart_label, "Tap to restart");
+    lv_label_set_text(restart_label, "点击重新开始");
     lv_obj_align(restart_label, LV_ALIGN_CENTER, 0, 10);
     lv_ext_set_local_font(restart_label, FONT_NORMAL, lv_color_hex(0xAAAAAA));
     lv_obj_add_flag(restart_label, LV_OBJ_FLAG_HIDDEN);
@@ -500,21 +499,22 @@ static void create_game_ui(lv_obj_t *parent)
         projectiles[i].active = false;
     }
 
-    /* 退出按钮 */
-    lv_obj_t *exit_btn = lv_btn_create(parent);
-    lv_obj_set_size(exit_btn, 100, 40);
-    lv_obj_set_style_bg_color(exit_btn, lv_color_hex(0x333333),
+    /* 发射按钮 */
+    lv_obj_t *fire_btn = lv_btn_create(parent);
+    lv_obj_set_size(fire_btn, 250, 80);
+    lv_obj_set_style_bg_color(fire_btn, lv_color_hex(0x424145),
                               LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_radius(exit_btn, 12, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_shadow_width(exit_btn, 0,
+    lv_obj_set_style_radius(fire_btn, 25, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_shadow_width(fire_btn, 0,
                                   LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_align(exit_btn, LV_ALIGN_BOTTOM_MID, 0, -20);
-    lv_obj_add_event_cb(exit_btn, exit_btn_event_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_set_style_pad_all(fire_btn, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_align(fire_btn, LV_ALIGN_BOTTOM_MID, 0, -10);
+    lv_obj_add_event_cb(fire_btn, fire_btn_event_cb, LV_EVENT_CLICKED, NULL);
 
-    lv_obj_t *exit_label = lv_label_create(exit_btn);
-    lv_ext_set_local_font(exit_label, FONT_SMALL, lv_color_hex(0xAAAAAA));
-    lv_label_set_text(exit_label, "Exit");
-    lv_obj_center(exit_label);
+    lv_obj_t *fire_label = lv_label_create(fire_btn);
+    lv_ext_set_local_font(fire_label, FONT_TITLE, lv_color_hex(0xc0c0c0));
+    lv_label_set_text(fire_label, "开火");
+    lv_obj_center(fire_label);
 
     game_timer = lv_timer_create(game_tick, GAME_TICK_MS, NULL);
 }
@@ -523,7 +523,6 @@ static void on_start(void)
 {
     create_game_ui(lv_scr_act());
     game_state = GAME_STATE_READY;
-    last_tap_tick = 0;
     lv_img_cache_invalidate_src(NULL);
 }
 
