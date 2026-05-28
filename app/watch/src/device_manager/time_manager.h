@@ -32,7 +32,11 @@ typedef void (*alarm_callback_t)(rt_alarm_t alarm, time_t timestamp);
 
 rt_err_t dm_set_date_time(dm_date_time_t dt);
 dm_date_time_t *dm_get_date_time(dm_date_time_t *dt);
-void dm_set_alarm(int hour, int min, int sec, rt_alarm_callback_t cb);
 void dm_print_time(const char *tag, dm_date_time_t dt);
+
+/* Alarm convenience wrappers (see also alarm_manager for full alarm management) */
+rt_alarm_t dm_set_alarm(int hour, int min, int sec, rt_alarm_callback_t cb);
+rt_alarm_t dm_set_alarm_ex(int hour, int min, int sec, uint32_t flag,
+                            int wday, rt_alarm_callback_t cb);
 
 #endif

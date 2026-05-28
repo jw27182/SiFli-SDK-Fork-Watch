@@ -14,8 +14,8 @@
 #include "lvsf_comp.h"
 #include "alarm_storage.h"
 
-#define SCR_W 410
-#define SCR_H 502
+#define SCR_W LV_HOR_RES_MAX
+#define SCR_H LV_VER_RES_MAX
 
 static int32_t repeat_idx = -1;
 static alarm_entry_t repeat_alarm;
@@ -138,15 +138,15 @@ static void on_start(void)
 
     /* 标题 */
     lv_obj_t *title = lv_label_create(scr);
-    lv_ext_set_local_font(title, FONT_TITLE, lv_color_hex(0xFFFFFF));
-    lv_label_set_text(title, "Repeat");
-    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 20);
+    lv_ext_set_local_font(title, FONT_HUGE, lv_color_hex(0xc0c0c0));
+    lv_label_set_text(title, "重复");
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 3);
 
     /* 按钮矩阵 */
     btnm = lv_btnmatrix_create(scr);
     lv_btnmatrix_set_map(btnm, btnm_map);
     lv_obj_set_size(btnm, SCR_W - 40, SCR_H - 100);
-    lv_obj_align(btnm, LV_ALIGN_TOP_MID, 0, 60);
+    lv_obj_align(btnm, LV_ALIGN_TOP_MID, 0, 55);
 
     /* 设置所有按钮可选中 */
     for (int i = 0; i < 10; i++) {
@@ -158,15 +158,15 @@ static void on_start(void)
     /* 样式 */
     lv_obj_set_style_bg_opa(btnm, LV_OPA_TRANSP,
                             LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(btnm, lv_color_hex(0x333333),
+    lv_obj_set_style_bg_color(btnm, lv_color_hex(0x1c1c1c),
                               LV_PART_ITEMS | LV_STATE_DEFAULT);
-    lv_obj_set_style_text_color(btnm, lv_color_hex(0xFFFFFF),
+    lv_obj_set_style_text_color(btnm, lv_color_hex(0xc0c0c0),
                                 LV_PART_ITEMS | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(btnm, lv_color_hex(0x3A6D7B),
+    lv_obj_set_style_bg_color(btnm, lv_color_hex(0x55aa6c),
                               LV_PART_ITEMS | LV_STATE_CHECKED);
-    lv_obj_set_style_radius(btnm, 12,
+    lv_obj_set_style_radius(btnm, 25,
                             LV_PART_ITEMS | LV_STATE_DEFAULT);
-    lv_ext_set_local_font(btnm, FONT_NORMAL, lv_color_hex(0xFFFFFF));
+    lv_ext_set_local_font(btnm, FONT_NORMAL, lv_color_hex(0xc0c0c0));
 
     update_btnm_state();
 

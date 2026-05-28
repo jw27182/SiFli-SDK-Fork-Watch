@@ -1241,11 +1241,11 @@ static void app_mainmenu_icons_transform(bool force_refresh) {
 
     // rt_kprintf("app_mainmenu_icons_transform cost %d ms \n",rt_tick_get() -
     // start);
-    static lv_obj_t* last_center_icon = NULL; // 静态变量，记录上一次居中的图标
+    static lv_obj_t* last_center_icon = NULL; // 闈欐�佸彉閲忥紝璁板綍涓婁竴娆″眳涓殑鍥炬爣
     if (app_mainmenu_ctx.cicon != last_center_icon && app_mainmenu_ctx.cicon != NULL) {
-        // 中心图标发生了变化，触发一次短震动
-        vibrator_send(50, 75); // 参数可根据需要调整，例如震动50ms
-        last_center_icon = app_mainmenu_ctx.cicon; // 更新记录
+        // 涓績鍥炬爣鍙戠敓浜嗗彉鍖栵紝瑙﹀彂涓�娆＄煭闇囧姩
+        vibrator_send(50, 75); // 鍙傛暟鍙牴鎹渶瑕佽皟鏁达紝渚嬪闇囧姩50ms
+        last_center_icon = app_mainmenu_ctx.cicon; // 鏇存柊璁板綍
     }
 }
 /*

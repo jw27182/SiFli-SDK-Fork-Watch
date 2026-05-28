@@ -73,95 +73,74 @@ dm_date_time_t *dm_get_date_time(dm_date_time_t *dt)
 }
 
 #if defined(RT_USING_RTC) && defined(RT_USING_ALARM)
-// /**
-//   * @brief  This function handles alarm.
-//   * @retval none
-//   */
-// static void alarm_callback(rt_alarm_t alarm, time_t timestamp)
-// {
-//     /* Convert calendar time to local time */
-//     struct tm *tm_expired = localtime(&timestamp);
-//     /* Convert local time to dm_date_time_t  */
-//     dm_date_time_t dt_expired = {0};
-
-//     /* Convert local time to dm_date_time_t  */
-//     LOCAL_TIME_2_DATE_TIME_T(&dt_expired, tm_expired);
-//     dm_print_time("Alarm triggered at ", dt_expired);
-// }
 
 /**
-  * @brief  Set alarm.
-  * @retval none
+  * @brief  Create and start a one-shot alarm at the specified time.
+  * @param  hour  Hour (0-23)
+  * @param  min   Minute (0-59)
+  * @param  sec   Second (0-59)
+  * @param  cb    Callback function invoked when the alarm fires
+  * @retval rt_alarm_t handle on success, RT_NULL on failure
+  *
+  * @note   For full alarm management (repeating alarms, persistence,
+  *         day-of-week filtering), use alarm_manager instead.
   */
-void dm_set_alarm(int hour, int min, int sec, rt_alarm_callback_t cb)
+rt_alarm_t dm_set_alarm(int hour, int min, int sec, rt_alarm_callback_t cb)
 {
-    rt_alarm_t g_alarm;
-    static struct rt_alarm_setup g_alarm_setup;
-    static struct tm tm_now;
-    time_t now, ts_new;
+    struct rt_alarm_setup setup;
+    rt_alarm_t alarm;
 
-    memset(&g_alarm_setup, 0, sizeof(g_alarm_setup));
+    memset(&setup, 0, sizeof(setup));
+    setup.wktime.tm_hour = hour;
+    setup.wktime.tm_min  = min;
+    setup.wktime.tm_sec  = sec;
+    setup.flag = RT_ALARM_ONESHOT;
 
-    /* Get current system time (calendar time) */
-    now = time(NULL);
-    /* Convert calendar time to UTC time */
-    gmtime_r(&now, &g_alarm_setup.wktime);
-    g_alarm_setup.wktime.tm_hour = hour;
-    g_alarm_setup.wktime.tm_min = min;
-    g_alarm_setup.wktime.tm_sec = sec;
-    /* Alarm is oneshot alarm.
-     * Alarm flags see RT_ALARM_XXX(RT_ALARM_DAILY/RT_ALARM_WEELY...) in alarm.h.
-     */
-    g_alarm_setup.flag = RT_ALARM_ONESHOT;
-    /* Create alarm */
-    g_alarm = rt_alarm_create(cb, &g_alarm_setup);
-    /* Start alarm */
-    rt_alarm_start(g_alarm);
+    alarm = rt_alarm_create(cb, &setup);
+    if (alarm == RT_NULL) {
+        rt_kprintf("dm_set_alarm: rt_alarm_create failed\n");
+        return RT_NULL;
+    }
+    rt_alarm_start(alarm);
 
-    rt_kprintf("SET ONESHOT ALARM : [%02d:%02d:%02d] \n", g_alarm_setup.wktime.tm_hour, g_alarm_setup.wktime.tm_min, g_alarm_setup.wktime.tm_sec);
+    rt_kprintf("SET ONESHOT ALARM: [%02d:%02d:%02d]\n", hour, min, sec);
+    return alarm;
 }
+
+/**
+  * @brief  Create and start an alarm with custom flags.
+  * @param  hour  Hour (0-23)
+  * @param  min   Minute (0-59)
+  * @param  sec   Second (0-59)
+  * @param  flag  Alarm flag: RT_ALARM_ONESHOT / RT_ALARM_DAILY / RT_ALARM_WEEKLY
+  * @param  wday  Weekday for RT_ALARM_WEEKLY (0=Sun,1=Mon,...,6=Sat), ignored otherwise
+  * @param  cb    Callback function invoked when the alarm fires
+  * @retval rt_alarm_t handle on success, RT_NULL on failure
+  */
+rt_alarm_t dm_set_alarm_ex(int hour, int min, int sec, uint32_t flag,
+                            int wday, rt_alarm_callback_t cb)
+{
+    struct rt_alarm_setup setup;
+    rt_alarm_t alarm;
+
+    memset(&setup, 0, sizeof(setup));
+    setup.wktime.tm_hour = hour;
+    setup.wktime.tm_min  = min;
+    setup.wktime.tm_sec  = sec;
+    setup.flag = flag;
+    if (flag == RT_ALARM_WEEKLY)
+        setup.wktime.tm_wday = wday;
+
+    alarm = rt_alarm_create(cb, &setup);
+    if (alarm == RT_NULL) {
+        rt_kprintf("dm_set_alarm_ex: rt_alarm_create failed\n");
+        return RT_NULL;
+    }
+    rt_alarm_start(alarm);
+
+    rt_kprintf("SET ALARM: [%02d:%02d:%02d] flag=0x%04x wday=%d\n",
+               hour, min, sec, (unsigned)flag, wday);
+    return alarm;
+}
+
 #endif
-
-// /**
-//   * @brief  Main program
-//   * @param  None
-//   * @retval 0 if success, otherwise failure number
-//   */
-// int main(void)
-// {
-//     /* Set system time to 2024/1/1 8:30:0 */
-//     dm_date_time_t dt_set = {2024, 1, 1, 8, 30, 0};
-//     rt_err_t ret = dm_set_date_time(dt_set);
-//     RT_ASSERT(ret == RT_EOK);
-//     dm_print_time("set system time (by RT DEVICE): ", dt_set);
-//     /* Get system time. */
-//     dm_date_time_t dt_now = {0};
-//     dm_get_date_time(&dt_now);
-//     dm_print_time("current system time: ", dt_now);
-
-//     /* Use RTT API to set system time to 2024/2/1 8:30:0 */
-//     dt_set.month = 2;
-//     set_date(dt_set.year, dt_set.month, dt_set.day);
-//     set_time(dt_set.hour, dt_set.minute, dt_set.second);
-//     dm_print_time("set system time (by RTT API): ", dt_set);
-//     /* Get system time. */
-//     dm_get_date_time(&dt_now);
-//     dm_print_time("current system time: ", dt_now);
-
-//     /* Set alarm */
-// #if defined(RT_USING_RTC) && defined(RT_USING_ALARM)
-//     /* Create a alarm which will expire at 8:32:0 (2 minutes later)*/
-//     dm_set_alarm(8, 32, 0);
-// #endif
-
-//     /* Infinite loop */
-//     while (1)
-//     {
-//         /* Get system time per second. */
-//         rt_thread_mdelay(1000);
-//         dm_get_date_time(&dt_now);
-//         dm_print_time("current system time: ", dt_now);
-//     }
-//     return 0;
-// }
-
