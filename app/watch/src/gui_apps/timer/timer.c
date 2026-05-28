@@ -17,13 +17,13 @@
 #include "lvsf_comp.h"
 #include "vibrator_manager.h"
 
-#define SCR_W 410
-#define SCR_H 502
+#define SCR_W LV_HOR_RES_MAX
+#define SCR_H LV_VER_RES_MAX
 
 #define LIST_TIMER_HEIGHT     160
 #define LIST_TIMER_WIDGET_RADIUS 30
-#define LIST_TIMER_BG_COLOR   0x1E1E1E
-#define LIST_TIMER_ACCENT_COLOR 0x80A0FF
+#define LIST_TIMER_BG_COLOR   0x1c1c1c
+#define LIST_TIMER_ACCENT_COLOR 0x55aa6c
 #define LIST_TIMER_ROW_SPACING  40
 
 typedef struct {
@@ -254,10 +254,7 @@ static void scroll_timer_list(lv_obj_t *list)
         for (uint8_t i = 0; i < child_cnt; i++) {
             lv_obj_t *item = list->spec_attr->children[i];
             if (i == selected_timer_index) {
-                lv_obj_set_style_border_width(item, 1, 0);
                 ui.current_button = item;
-            } else {
-                lv_obj_set_style_border_width(item, 0, 0);
             }
         }
     }
@@ -313,7 +310,7 @@ static lv_obj_t *create_timer_list(lv_obj_t *parent)
     lv_obj_set_size(title_bg, SCR_W, 60);
     lv_obj_set_style_bg_color(title_bg, lv_color_hex(0x000000),
                               LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_opa(title_bg, LV_OPA_80,
+    lv_obj_set_style_bg_opa(title_bg, LV_OPA_COVER,
                             LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_border_width(title_bg, 0,
                                   LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -324,8 +321,8 @@ static lv_obj_t *create_timer_list(lv_obj_t *parent)
     lv_label_set_text(ui.timer_title, "Timer");
     lv_obj_set_style_text_align(ui.timer_title, LV_TEXT_ALIGN_CENTER,
                                 LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_ext_set_local_font(ui.timer_title, FONT_TITLE,
-                          lv_color_hex(LIST_TIMER_ACCENT_COLOR));
+    lv_ext_set_local_font(ui.timer_title, FONT_HUGE,
+                          lv_color_hex(0xc0c0c0));
     lv_obj_align(ui.timer_title, LV_ALIGN_CENTER, 0, 0);
 
     /* 列表项 */
@@ -341,29 +338,25 @@ static lv_obj_t *create_timer_list(lv_obj_t *parent)
                                 LV_PART_MAIN | LV_STATE_DEFAULT);
         lv_obj_set_style_border_width(timer_widget, 0,
                                       LV_PART_MAIN | LV_STATE_DEFAULT);
-        lv_obj_set_style_border_color(timer_widget, lv_color_hex(0xFFFFFF),
-                                      LV_PART_MAIN | LV_STATE_DEFAULT);
-        lv_obj_set_style_border_opa(timer_widget, LV_OPA_50,
-                                    LV_PART_MAIN | LV_STATE_DEFAULT);
         lv_obj_clear_flag(timer_widget, LV_OBJ_FLAG_SCROLLABLE);
 
         /* 闹钟图标 */
         lv_obj_t *icon = lv_label_create(timer_widget);
-        lv_ext_set_local_font(icon, FONT_TITLE, lv_color_hex(0xAAAAAA));
+        lv_ext_set_local_font(icon, FONT_TITLE, lv_color_hex(0x747474));
         lv_label_set_text(icon, LV_SYMBOL_BELL);
         lv_obj_align(icon, LV_ALIGN_LEFT_MID, 20, -20);
 
         /* 时间标签 */
         lv_obj_t *label = lv_label_create(timer_widget);
         lv_label_set_text(label, timer_options[i]);
-        lv_ext_set_local_font(label, FONT_NORMAL, lv_color_hex(0xFFFFFF));
+        lv_ext_set_local_font(label, FONT_NORMAL, lv_color_hex(0xc0c0c0));
         lv_obj_align_to(label, icon, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 4);
 
         /* 开始按钮 */
         lv_obj_t *start_btn = lv_obj_create(timer_widget);
         lv_obj_set_size(start_btn, 65, 65);
         lv_obj_align(start_btn, LV_ALIGN_RIGHT_MID, -10, 0);
-        lv_obj_set_style_radius(start_btn, 33,
+        lv_obj_set_style_radius(start_btn, 25,
                                 LV_PART_MAIN | LV_STATE_DEFAULT);
         lv_obj_set_style_bg_color(start_btn,
                                   lv_color_hex(LIST_TIMER_ACCENT_COLOR),
@@ -373,7 +366,7 @@ static lv_obj_t *create_timer_list(lv_obj_t *parent)
         lv_obj_clear_flag(start_btn, LV_OBJ_FLAG_SCROLLABLE);
 
         lv_obj_t *start_icon = lv_label_create(start_btn);
-        lv_ext_set_local_font(start_icon, FONT_NORMAL, lv_color_hex(0xFFFFFF));
+        lv_ext_set_local_font(start_icon, FONT_NORMAL, lv_color_hex(0xc0c0c0));
         lv_label_set_text(start_icon, LV_SYMBOL_PLAY);
         lv_obj_center(start_icon);
 
@@ -389,7 +382,6 @@ static lv_obj_t *create_timer_list(lv_obj_t *parent)
         lv_obj_t *default_item = lv_obj_get_child(list, selected_timer_index);
         lv_obj_scroll_to_view(default_item, LV_ANIM_OFF);
         ui.current_button = default_item;
-        lv_obj_set_style_border_width(default_item, 1, 0);
         old_selected_timer_index = selected_timer_index;
     }
 
@@ -409,47 +401,55 @@ static lv_obj_t *create_countdown_screen(lv_obj_t *parent)
     lv_obj_clear_flag(countdown_screen, LV_OBJ_FLAG_SCROLLABLE);
 
     ui.timer_label = lv_label_create(countdown_screen);
-    lv_ext_set_local_font(ui.timer_label, FONT_SUPER, lv_color_hex(0xFFFFFF));
+    lv_ext_set_local_font(ui.timer_label, FONT_SUPER, lv_color_hex(0xc0c0c0));
     lv_obj_align(ui.timer_label, LV_ALIGN_TOP_MID, 0, 120);
     lv_label_set_text(ui.timer_label, "00:00:00");
 
     /* 暂停按钮 */
     ui.pause_button = lv_btn_create(countdown_screen);
     lv_obj_set_size(ui.pause_button, 100, 70);
-    lv_obj_set_style_radius(ui.pause_button, 35,
+    lv_obj_set_style_radius(ui.pause_button, 25,
                             LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(ui.pause_button, lv_color_hex(0x333333),
+    lv_obj_set_style_bg_color(ui.pause_button, lv_color_hex(0x424145),
                               LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_shadow_width(ui.pause_button, 0,
                                   LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_align(ui.pause_button, LV_ALIGN_TOP_RIGHT, -30, 260);
 
     lv_obj_t *pause_lbl = lv_label_create(ui.pause_button);
-    lv_ext_set_local_font(pause_lbl, FONT_TITLE, lv_color_hex(0xFFFFFF));
+    lv_ext_set_local_font(pause_lbl, FONT_TITLE, lv_color_hex(0xc0c0c0));
     lv_label_set_text(pause_lbl, LV_SYMBOL_PAUSE);
     lv_obj_center(pause_lbl);
 
     lv_obj_add_event_cb(ui.pause_button, pause_button_event_cb,
                         LV_EVENT_CLICKED, NULL);
 
+    lv_obj_set_style_bg_color(ui.pause_button, lv_color_hex(0x2a2a2a),
+                              LV_STATE_PRESSED);
+    lv_obj_set_style_bg_opa(ui.pause_button, LV_OPA_70, LV_STATE_PRESSED);
+
     /* 停止按钮 */
     ui.stop_button = lv_btn_create(countdown_screen);
     lv_obj_set_size(ui.stop_button, 100, 70);
-    lv_obj_set_style_radius(ui.stop_button, 35,
+    lv_obj_set_style_radius(ui.stop_button, 25,
                             LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(ui.stop_button, lv_color_hex(0x333333),
+    lv_obj_set_style_bg_color(ui.stop_button, lv_color_hex(0x424145),
                               LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_shadow_width(ui.stop_button, 0,
                                   LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_align(ui.stop_button, LV_ALIGN_TOP_LEFT, 30, 260);
 
     lv_obj_t *stop_lbl = lv_label_create(ui.stop_button);
-    lv_ext_set_local_font(stop_lbl, FONT_NORMAL, lv_color_hex(0xFFFFFF));
+    lv_ext_set_local_font(stop_lbl, FONT_NORMAL, lv_color_hex(0xc0c0c0));
     lv_label_set_text(stop_lbl, "STOP");
     lv_obj_center(stop_lbl);
 
     lv_obj_add_event_cb(ui.stop_button, stop_button_event_cb,
                         LV_EVENT_CLICKED, NULL);
+
+    lv_obj_set_style_bg_color(ui.stop_button, lv_color_hex(0x2a2a2a),
+                              LV_STATE_PRESSED);
+    lv_obj_set_style_bg_opa(ui.stop_button, LV_OPA_70, LV_STATE_PRESSED);
 
     return countdown_screen;
 }
@@ -490,46 +490,40 @@ static void show_timeout_notification(void)
     lv_obj_align(timeout_msg_box, LV_ALIGN_CENTER, 0, 0);
     lv_obj_set_style_radius(timeout_msg_box, 40,
                             LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(timeout_msg_box, lv_color_hex(0x303040),
+    lv_obj_set_style_bg_color(timeout_msg_box, lv_color_hex(0x1c1c1c),
                               LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_bg_opa(timeout_msg_box, 240,
                             LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_border_width(timeout_msg_box, 2,
+    lv_obj_set_style_border_width(timeout_msg_box, 0,
                                   LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_border_color(timeout_msg_box, lv_color_hex(0x6080FF),
-                                  LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_border_opa(timeout_msg_box, LV_OPA_40,
-                                LV_PART_MAIN | LV_STATE_DEFAULT);
 
     lv_obj_t *alarm_icon = lv_label_create(timeout_msg_box);
-    lv_ext_set_local_font(alarm_icon, FONT_SUPER, lv_color_hex(0xFFFFFF));
+    lv_ext_set_local_font(alarm_icon, FONT_SUPER, lv_color_hex(0xc0c0c0));
     lv_label_set_text(alarm_icon, LV_SYMBOL_BELL);
     lv_obj_align(alarm_icon, LV_ALIGN_TOP_MID, 0, 30);
 
     lv_obj_t *title = lv_label_create(timeout_msg_box);
-    lv_ext_set_local_font(title, FONT_TITLE, lv_color_hex(0xFFFFFF));
+    lv_ext_set_local_font(title, FONT_HUGE, lv_color_hex(0xc0c0c0));
     lv_label_set_text(title, "Time's Up!");
     lv_obj_align_to(title, alarm_icon, LV_ALIGN_OUT_BOTTOM_MID, 0, 16);
 
     lv_obj_t *subtitle = lv_label_create(timeout_msg_box);
-    lv_ext_set_local_font(subtitle, FONT_NORMAL, lv_color_hex(0xAAAAAA));
+    lv_ext_set_local_font(subtitle, FONT_NORMAL, lv_color_hex(0x747474));
     lv_label_set_text(subtitle, "Your timer has finished");
     lv_obj_align_to(subtitle, title, LV_ALIGN_OUT_BOTTOM_MID, 0, 8);
 
     lv_obj_t *close_btn = lv_btn_create(timeout_msg_box);
     lv_obj_set_size(close_btn, 140, 50);
     lv_obj_align(close_btn, LV_ALIGN_BOTTOM_MID, 0, -30);
-    lv_obj_set_style_radius(close_btn, 12,
+    lv_obj_set_style_radius(close_btn, 25,
                             LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(close_btn, lv_color_hex(0x5070DD),
+    lv_obj_set_style_bg_color(close_btn, lv_color_hex(0x424145),
                               LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_shadow_width(close_btn, 0,
                                   LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(close_btn, lv_color_hex(0x4060CC),
-                              LV_PART_MAIN | LV_STATE_PRESSED);
 
     lv_obj_t *btn_label = lv_label_create(close_btn);
-    lv_ext_set_local_font(btn_label, FONT_NORMAL, lv_color_hex(0xFFFFFF));
+    lv_ext_set_local_font(btn_label, FONT_NORMAL, lv_color_hex(0xc0c0c0));
     lv_label_set_text(btn_label, "Close");
     lv_obj_center(btn_label);
 

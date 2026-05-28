@@ -474,10 +474,9 @@ void app_watch_entry(void *parameter)
         wait_platform_init_done();
     }
 #else
-    {
-        set_date(2022, 7, 1);
-        set_time(9, 0, 0);
-    }
+    /* RTC time is managed by drv_rtc.c via backup registers.
+     * Do NOT unconditionally set date/time here — it overwrites
+     * the RTC-preserved time on every boot. */
 #endif /* _MSC_VER */
 
     init_pin();
