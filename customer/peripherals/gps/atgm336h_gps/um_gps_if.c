@@ -349,9 +349,12 @@ static void gps_gnss_sv_cb(GnssSvStatus *param) {
     }
 }
 
+static volatile rt_bool_t g_nmea_passthrough = RT_FALSE;
+
 static void gps_nmea_cb(GpsUtcTime timestamp, const char *nmea, int length) {
-    // if (nmea != NULL)
-    // LOG_I("nmea_cb: %s, timestamp = %d, len=%d\n", nmea, timestamp, length);
+    if (g_nmea_passthrough && nmea != NULL && length > 0) {
+        rt_kprintf("%.*s", length, nmea);
+    }
 }
 
 int um_gps_open(void) {
@@ -400,7 +403,7 @@ int cmd_gps(int argc, char *argv[]) {
     double lat, lon, alt;
     GpsData gps_data;
     if (argc < 2) {
-        LOG_I("Invalid parameter\n");
+        LOG_I("Usage: gps -ver|-frq|-bd <baud>|-nmea <0|1>\n");
         return 0;
     }
 
@@ -416,8 +419,15 @@ int cmd_gps(int argc, char *argv[]) {
             LOG_I("Set baud to %d done\n", value);
         else
             LOG_I("Set baud to %d fail\n", value);
+    } else if (strcmp(argv[1], "-nmea") == 0) {
+        if (argc >= 3) {
+            g_nmea_passthrough = atoi(argv[2]) ? RT_TRUE : RT_FALSE;
+            LOG_I("NMEA passthrough %s\n", g_nmea_passthrough ? "ON" : "OFF");
+        } else {
+            LOG_I("NMEA passthrough: %s\n", g_nmea_passthrough ? "ON" : "OFF");
+        }
     } else {
-        LOG_I("Invalid parameter\n");
+        LOG_I("Usage: gps -ver|-frq|-bd <baud>|-nmea <0|1>\n");
     }
     return 0;
 }
