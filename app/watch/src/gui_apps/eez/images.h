@@ -12,7 +12,11 @@ extern const lv_img_dsc_t img_img_corona_second;
 extern const lv_img_dsc_t img_img_minutes_mask;
 extern const lv_img_dsc_t img_img_battery_icon;
 extern const lv_img_dsc_t img_img_battery_charge;
-extern const lv_img_dsc_t img_img_satellite_icon;
+extern const lv_img_dsc_t img_img_temperature_icon;
+extern const lv_img_dsc_t img_img_shutdown;
+extern const lv_img_dsc_t img_img_enter;
+extern const lv_img_dsc_t img_img_sync;
+extern const lv_img_dsc_t img_img_expand_up__and_down;
 
 #ifndef EXT_IMG_DESC_T
 #define EXT_IMG_DESC_T
@@ -22,7 +26,7 @@ typedef struct _ext_img_desc_t {
 } ext_img_desc_t;
 #endif
 
-extern const ext_img_desc_t images[6];
+extern const ext_img_desc_t images[10];
 
 #ifdef __cplusplus
 }

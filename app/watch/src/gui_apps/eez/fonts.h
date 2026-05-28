@@ -8,6 +8,7 @@ extern "C" {
 #endif
 
 extern lv_font_t *ui_font_mi_sans_20;
+extern lv_font_t *ui_font_mi_sans_25;
 extern lv_font_t *ui_font_mi_sans_30;
 extern lv_font_t *ui_font_mi_sans_42;
 extern lv_font_t *ui_font_mi_sans_80;
