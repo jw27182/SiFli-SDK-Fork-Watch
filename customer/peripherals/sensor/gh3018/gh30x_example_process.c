@@ -286,7 +286,7 @@ void Gh30xDemoSampleStart(const ST_REGISTER *pstBaseArray, GU16 usBaseArrayLen,
 
     /**** init channel info ***/
     Gh30xGetChnlInfo();
-#if 1 /* [DBG_LED] */
+#if 0 /* [DBG_LED] */
     {
         GU16 led_en = HBD_I2cReadReg(0x0084);
         GU16 led0_cur = HBD_I2cReadReg(0x0118);
@@ -466,7 +466,7 @@ void gh30x_module_start(GU32 unFunctionMode)
         unFunctionMode, g_uchNeedReadRawdataCount,
         stSampleResetCfgTemp.usResetEn, stSampleResetCfgTemp.usResetSampleRate,
         stSampleResetCfgTemp.uchResetFifoWaterLine);
-#if 1 /* [DBG_MOD] */
+#if 0 /* [DBG_MOD] */
     rt_kprintf("[DBG_MOD] module_start funcMode=0x%X NeedReadCnt=%d sampleRate=%d fifoWm=%d\r\n",
                (unsigned)unFunctionMode, (int)g_uchNeedReadRawdataCount,
                (int)stSampleResetCfgTemp.usResetSampleRate,
@@ -563,7 +563,7 @@ void Gh30xFunctionFrameInfoBaseInit(void)
         ->pstFunctionInfo->usOutputDataRate = 25;
     g_pstGh30xFrameInfo[GH30X_FUNC_OFFSET_HR]->puchChnlMap[0] =
         CHNL_MAP_TO_FIFO_PHASE1_DATA;
-#if 1 /* [DBG_CHNL] */
+#if 0 /* [DBG_CHNL] */
     rt_kprintf("[DBG_CHNL] HR chnlNum=1 map[0]=%d(Phase1) rate=%d\r\n",
                (int)g_pstGh30xFrameInfo[GH30X_FUNC_OFFSET_HR]->puchChnlMap[0],
                (int)g_pstGh30xFrameInfo[GH30X_FUNC_OFFSET_HR]->pstFunctionInfo->usOutputDataRate);
@@ -1673,7 +1673,7 @@ void GH30xGetFrameDataAndProcess(GU8 *puchRawdataBuf,
             }
             g_frame_data_cnt++;
 
-#if 1 /* [DBG_FRAME] [DBG_FRAME_SADT] */
+#if 0 /* [DBG_FRAME] [DBG_FRAME_SADT] */
             // Debug: log frame assembly for HR function
             if (pstFrameInfo->unFunctionID == GH30X_FUNCTION_HR)
             {
@@ -1874,7 +1874,7 @@ void gh30x_fifo_evt_handler(void)
             (GU8 *)(g_UNGh30xRawdataBuf.stRawdataBuf.unPpgRawdataBuf),
             &uchNeedForceReadAgain);
 
-#if 1 /* [DBG_FIFO] [DBG_FIX] */
+#if 0 /* [DBG_FIFO] [DBG_FIX] */
         /* RAW数据日志已禁用 - 每FIFO事件50行输出导致系统卡死 */
         /* 仅打印摘要信息 */
         rt_kprintf("[DBG_FIFO] samples=%u NeedReadCnt=%u funcMode=0x%X gsNum=%u\r\n",

@@ -1338,13 +1338,13 @@ GU16 HBD_I2cReadRegBitField(GU16 usRegAddr, GU8 uchLsb, GU8 uchMsb)
     GU16 usRegData = 0;
     HBD_TryToWakeUp();
     usRegData = HBD_I2cReadReg(usRegAddr);
-#if 1 /* [DBG_BITF] */
+#if 0 /* [DBG_BITF] */
     rt_kprintf("[DBG_BITF] ReadRegBitField: addr=0x%04X lsb=%d msb=%d mask=0x%04X raw=0x%04X\r\n",
                (unsigned)usRegAddr, (int)uchLsb, (int)uchMsb, (unsigned)usMakData, (unsigned)usRegData);
 #endif
     GH30X_VAL_GET_BIT(usRegData, usMakData);
     usRegData >>= uchLsb;
-#if 1 /* [DBG_BITF] */
+#if 0 /* [DBG_BITF] */
     rt_kprintf("[DBG_BITF] after mask: result=%d\r\n", (int)usRegData);
 #endif
     return usRegData;
@@ -2311,7 +2311,7 @@ void Gh30xGetChnlInfo(void)
     {
         HBD_DelayUs(1000);  /* wait 1ms for chip to stabilize */
         raw_reg = HBD_I2cReadReg(HBD_CONFIG_REG_ADDR);
-#if 1 /* [DBG_CHNL] */
+#if 0 /* [DBG_CHNL] */
         rt_kprintf("[DBG_CHNL] GetChnlInfo: retry after delay, raw_reg=0x%04X\r\n", (unsigned)raw_reg);
 #endif
     }
@@ -2320,7 +2320,7 @@ void Gh30xGetChnlInfo(void)
     uchLedEnBit = (GU8)(raw_reg & 0x0007);           /* bits[2:0] */
     uchLogicChnlMapIndex = (GU8)((raw_reg >> 6) & 0x0007);  /* bits[8:6] */
 
-#if 1 /* [DBG_CHNL] */
+#if 0 /* [DBG_CHNL] */
     rt_kprintf("[DBG_CHNL] GetChnlInfo: raw_reg=0x%04X LedEnBit=%d LogicMap=%d\r\n",
                (unsigned)raw_reg, (int)uchLedEnBit, (int)uchLogicChnlMapIndex);
 #endif

@@ -7,27 +7,27 @@ static gh30x_hr_ui_sample_t s_last;
 
 static void emit(void)
 {
-#if 1 /* [DBG_NOTIFY] */
+#if 0 /* [DBG_NOTIFY] */
     rt_kprintf("[DBG_NOTIFY] emit: seq=%lu bpm=%u valid=%u wear=%u cb=%p\r\n",
                (unsigned long)s_last.seq, (unsigned)s_last.hr_bpm,
                (unsigned)s_last.hr_valid, (unsigned)s_last.wear_status, (void*)s_cb);
 #endif
     if (s_cb == 0) {
-#if 1 /* [DBG_NOTIFY] */
+#if 0 /* [DBG_NOTIFY] */
         rt_kprintf("[DBG_NOTIFY] emit SKIP: no callback registered!\r\n");
 #endif
         return;
     }
     s_last.seq++;
     s_cb(&s_last);
-#if 1 /* [DBG_NOTIFY] */
+#if 0 /* [DBG_NOTIFY] */
     rt_kprintf("[DBG_NOTIFY] emit DONE: seq=%lu\r\n", (unsigned long)s_last.seq);
 #endif
 }
 
 void gh30x_hr_ui_notify_register(void (*cb)(const gh30x_hr_ui_sample_t *sample))
 {
-#if 1 /* [DBG_NOTIFY] */
+#if 0 /* [DBG_NOTIFY] */
     rt_kprintf("[DBG_NOTIFY] register cb=%p\r\n", (void*)cb);
 #endif
     s_cb = cb;
@@ -36,7 +36,7 @@ void gh30x_hr_ui_notify_register(void (*cb)(const gh30x_hr_ui_sample_t *sample))
 
 void gh30x_hr_ui_notify_reset(void)
 {
-#if 1 /* [DBG_NOTIFY] */
+#if 0 /* [DBG_NOTIFY] */
     rt_kprintf("[DBG_NOTIFY] reset (seq=%lu)\r\n", (unsigned long)s_last.seq);
 #endif
     /* 保留回调注册，只清零状态 */
@@ -53,7 +53,7 @@ void gh30x_hr_ui_notify_reset(void)
 
 void gh30x_hr_ui_notify_hr(uint8_t bpm, int hr_valid)
 {
-#if 1 /* [DBG_NOTIFY] */
+#if 0 /* [DBG_NOTIFY] */
     rt_kprintf("[DBG_NOTIFY] notify_hr: bpm=%u valid=%d\r\n", (unsigned)bpm, hr_valid);
 #endif
     s_last.hr_bpm = bpm;
@@ -67,7 +67,7 @@ void gh30x_hr_ui_notify_wear(uint8_t wear_status)
     if (s_last.wear_status == wear_status) {
         return;
     }
-#if 1 /* [DBG_NOTIFY] */
+#if 0 /* [DBG_NOTIFY] */
     rt_kprintf("[DBG_NOTIFY] wear CHANGED: %u -> %u\r\n",
                (unsigned)s_last.wear_status, (unsigned)wear_status);
 #endif

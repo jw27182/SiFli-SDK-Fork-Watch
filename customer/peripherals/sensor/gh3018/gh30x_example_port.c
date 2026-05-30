@@ -23,7 +23,7 @@
 #include "sensor.h"
 #endif
 
-#define DRV_DEBUG
+// #define DRV_DEBUG
 #define LOG_TAG "gh30x.port"
 #include <drv_log.h>
 

@@ -119,9 +119,9 @@
 
 /// log debug lvl: <0=> off , <1=> normal info ,  <2=> with data info
 #ifdef GOODIX_DEMO_PLANFORM
-#define __EXAMPLE_DEBUG_LOG_LVL__           (2)
+#define __EXAMPLE_DEBUG_LOG_LVL__           (0)
 #else
-#define __EXAMPLE_DEBUG_LOG_LVL__           (2)
+#define __EXAMPLE_DEBUG_LOG_LVL__           (0)
 #endif
 
 /// log support len

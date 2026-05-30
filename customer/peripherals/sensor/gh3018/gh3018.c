@@ -55,7 +55,7 @@
     #include "bloc_peripheral.h"
 #endif
 
-#define DRV_DEBUG
+// #define DRV_DEBUG
 #define LOG_TAG "drv.hbd"
 #include <drv_log.h>
 
@@ -168,7 +168,7 @@ int reset_gh3018(void)
 
 void soft_adt_callback(bool status)
 {
-#if 1 /* [DBG_SOFT_ADT] */
+#if 0 /* [DBG_SOFT_ADT] */
     rt_kprintf("[DBG_SOFT_ADT] wear status: %d\r\n", (int)status);
 #endif
 

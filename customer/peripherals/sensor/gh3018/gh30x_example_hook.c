@@ -174,7 +174,7 @@ void Gh30xAlgorithmGetIoDataHookFunc(const STGh30xFrameInfo *const pstFrameInfo)
         GS32 nadt_status = pr->snResult[0];   // lNadtResult[0]: 0=无更新, 1=佩戴, 2=未佩戴
         GS32 nadt_confidence = pr->snResult[1]; // lNadtResult[1]: 置信度
 
-#if 1 /* [DBG_NADT_HOOK] */
+#if 0 /* [DBG_NADT_HOOK] */
         // 详细记录 NADT hook 中的帧信息
         GU8 uchChnlNum = pstFrameInfo->pstFunctionInfo->uchChnlNum;
         GU8 uchGain0 = (pstFrameInfo->punRawdata[0] >> 24) & 0x07;
@@ -218,7 +218,7 @@ void Gh30xAlgorithmGetIoDataHookFunc(const STGh30xFrameInfo *const pstFrameInfo)
             } else if (nadt_status == 1) {
                 wear = GH30X_WEAR_STATUS_WEARING;
             }
-#if 1 /* [DBG_NADT] */
+#if 0 /* [DBG_NADT] */
             rt_kprintf("[DBG_NADT] wear status: %d -> %d (confidence=%d)\r\n",
                        (int)nadt_status, (int)wear, (int)nadt_confidence);
 #endif
@@ -580,7 +580,7 @@ void gh3011_algo_calculate_hook(EMFunctionID function_id,
     goodix_hba_result stHbaResult = {0};
     if (function_id == GH3011_FUNC_OFFSET_HR)
     {
-#if 1 /* [DBG_ALGO] */
+#if 0 /* [DBG_ALGO] */
         rt_kprintf("[DBG_ALGO] HBA input: rawdata=%d acc=(%d,%d,%d) frameID=%d\r\n",
                    (int)algo_calc_info->nRawdata[0],
                    (int)algo_calc_info->sAccData[0],
@@ -626,7 +626,7 @@ void gh3011_algo_calculate_hook(EMFunctionID function_id,
     #else
         ret = (GS32)goodix_hba_update(&stHbaInputRawdata, &stHbaResult);
     #endif
-#if 1 /* [DBG_ALGO] */
+#if 0 /* [DBG_ALGO] */
         rt_kprintf("[DBG_ALGO] HBA output: ret=%d out_flag=%d hba_out=%d score=%d snr=%d acc_scene=%d\r\n",
                    (int)ret, (int)stHbaResult.hba_out_flag, (int)stHbaResult.hba_out,
                    (int)stHbaResult.valid_score, (int)(stHbaResult.hba_snr * 100),
