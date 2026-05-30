@@ -243,7 +243,7 @@ static void on_resume(void)
     gh30x_hr_ui_notify_reset();     /* 重置通知状态 */
     s_last_data_tick = rt_tick_get_millisecond();
     s_watchdog_fired = RT_FALSE;
-    heart_rate_sensor_start();
+    /* 不在 on_resume 中重启传感器，避免与 on_start 双重启动 */
 #endif
     if (refresh_timer == NULL) {
         refresh_timer = lv_timer_create(heart_rate_timer_cb, 200, NULL);

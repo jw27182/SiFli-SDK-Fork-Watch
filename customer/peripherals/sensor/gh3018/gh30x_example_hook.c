@@ -744,8 +744,8 @@ void gh3011_algo_calculate_hook(EMFunctionID function_id,
                                   lNadtPacketInfoArr[4], lNadtPacketInfoArr[5],
                                   lNadtResult[0], lNadtResult[1]);
     #endif
-        algo_result->snResult[12] = (GS32)lNadtResult[0];
-        algo_result->snResult[13] = (GS32)lNadtResult[1];
+        algo_result->snResult[0] = (GS32)lNadtResult[0];
+        algo_result->snResult[1] = (GS32)lNadtResult[1];
         break;
 #endif
 #if (__HB_NEED_ADT_CONFIRM__)

@@ -2090,7 +2090,10 @@ GS8 HBD_LoadNewRegConfigArr(const ST_REGISTER stRegConfigArr[], GU16 usRegConfig
             {
                 if (HBD_I2cReadReg(HBD_GET_REG_REAL_ADRR(stRegConfigArr[usIndex].usRegAddr)) != stRegConfigArr[usIndex].usRegData)
                 {
-                    LOGD("err reg:0x%04x", stRegConfigArr[usIndex].usRegAddr);
+                    EXAMPLE_DEBUG_LOG_L1("[HBD_LoadNewRegConfigArr] VERIFY FAIL: reg=0x%04X expected=0x%04X actual=0x%04X\r\n",
+                                         (unsigned)stRegConfigArr[usIndex].usRegAddr,
+                                         (unsigned)stRegConfigArr[usIndex].usRegData,
+                                         (unsigned)HBD_I2cReadReg(HBD_GET_REG_REAL_ADRR(stRegConfigArr[usIndex].usRegAddr)));
                     chRet = HBD_RET_COMM_ERROR;
                     break;
                 }

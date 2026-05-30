@@ -276,7 +276,12 @@ void Gh30xDemoSampleStart(const ST_REGISTER *pstBaseArray, GU16 usBaseArrayLen,
     /**** load pstBaseArray ***/
     if (false == goodix_app_start_app_mode)
     {
-        gh30x_Load_new_config(pstBaseArray, usBaseArrayLen);
+        GS8 cfg_ret = gh30x_Load_new_config(pstBaseArray, usBaseArrayLen);
+        if (cfg_ret != HBD_RET_OK)
+        {
+            EXAMPLE_DEBUG_LOG_L1("[Gh30xDemoSampleStart] config load FAILED (%d), abort sample start\r\n", (int)cfg_ret);
+            return;
+        }
     }
 
     /**** init channel info ***/
@@ -2142,7 +2147,6 @@ void gh30x_int_msg_handler(void)
     }
 
     gh30x_irq_status = HBD_GetIntStatus();
-    g_uchNewIntFlag = 0; /* 在HBD_GetIntStatus()之后清零，避免HBD_TryToWakeUp()误判 */
     // EXAMPLE_DEBUG_LOG_L1(
     //     "gh30x_int_msg_handler gh30x_irq_status = %d chip_state = %x\r\n",
     //     gh30x_irq_status, HBD_I2cReadReg(HBD_IRQ_CTRL_REG_ADDR) & 0x00E0);
@@ -2173,6 +2177,10 @@ void gh30x_int_msg_handler(void)
     {
         gh30x_fifo_full_evt_handler();
     }
+
+    /* 在所有寄存器访问完成后再清零，避免 HBD_TryToWakeUp() 在
+     * gh30x_fifo_evt_handler 等函数内部读取 FIFO/rawdata 寄存器时误判 */
+    g_uchNewIntFlag = 0;
 }
 
 /// gh30x fifo int timeout msg handler
