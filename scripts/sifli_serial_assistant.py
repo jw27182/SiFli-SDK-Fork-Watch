@@ -9,6 +9,7 @@
 
   python3 scripts/sifli_serial_assistant.py
   python3 scripts/sifli_serial_assistant.py -p /dev/ttyACM0 -b 1000000
+  python3 scripts/sifli_serial_assistant.py --log serial.log
 
 --line：恢复旧版「本地逐行编辑」，回车整行发送（Tab/方向键仍由本机处理，到不了 MSH）。
 
@@ -37,14 +38,22 @@ except ImportError:
     sys.exit(1)
 
 
-def rx_loop(ser: serial.Serial, stop: threading.Event) -> None:
+def rx_loop(
+    ser: serial.Serial,
+    stop: threading.Event,
+    log_file: str | None = None,
+) -> None:
     try:
-        while not stop.is_set():
-            n = ser.in_waiting
-            chunk = ser.read(n if n > 0 else 1)
-            if chunk:
-                sys.stdout.buffer.write(chunk)
-                sys.stdout.buffer.flush()
+        with open(log_file, "ab") if log_file else None as lf:
+            while not stop.is_set():
+                n = ser.in_waiting
+                chunk = ser.read(n if n > 0 else 1)
+                if chunk:
+                    sys.stdout.buffer.write(chunk)
+                    sys.stdout.buffer.flush()
+                    if lf is not None:
+                        lf.write(chunk)
+                        lf.flush()
     except (OSError, serial.SerialException):
         pass
 
@@ -137,6 +146,11 @@ def main() -> None:
         action="store_true",
         help="透传时不在本机回显（仅依赖设备回显；避免与 MSH 回显重复）",
     )
+    p.add_argument(
+        "--log",
+        metavar="FILE",
+        help="将接收到的数据完整保存到指定文件",
+    )
     args = p.parse_args()
 
     eol_map = {"crlf": b"\r\n", "lf": b"\n", "cr": b"\r"}
@@ -162,7 +176,9 @@ def main() -> None:
         sys.exit(1)
 
     stop = threading.Event()
-    rx = threading.Thread(target=rx_loop, args=(ser, stop), daemon=True)
+    rx = threading.Thread(
+        target=rx_loop, args=(ser, stop, args.log), daemon=True
+    )
     rx.start()
 
     use_passthrough = not args.line
@@ -189,17 +205,21 @@ def main() -> None:
             if local_echo
             else "未开本地回显，显示依赖设备。"
         )
+        log_note = f"日志将保存到: {args.log}\n" if args.log else ""
         print(
             f"已打开 {args.port} @ {args.baud} 8N1，DTR/RTS 已拉低。\n"
             f"透传模式：{echo_note}\n"
+            f"{log_note}"
             "Ctrl+C 退出。（日志与输入可能交错，属常态。）\n",
             file=sys.stderr,
             flush=True,
         )
     else:
+        log_note = f"日志将保存到: {args.log}\n" if args.log else ""
         print(
             f"已打开 {args.port} @ {args.baud} 8N1，DTR/RTS 已拉低。\n"
             "逐行模式：提示符后输入命令，回车发送；空行 = 只发回车；exit / quit = 退出。\n"
+            f"{log_note}"
             "（日志与输入可能交错，属常态。）\n",
             file=sys.stderr,
             flush=True,

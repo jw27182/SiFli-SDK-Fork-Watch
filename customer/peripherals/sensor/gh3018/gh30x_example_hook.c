@@ -14,6 +14,7 @@
 #include "gh30x_demo_algo_call.h"
 #include "gh30x_demo_algo_config.h"
 #include "gh30x_hr_ui_notify.h"
+#include <rtthread.h>
 
 extern void gh3018_set_hr(uint32_t hr);
 
@@ -79,6 +80,11 @@ void Gh30xAlgorithmGetIoDataHookFunc(const STGh30xFrameInfo *const pstFrameInfo)
 {
     /* algo calculate */
 #if (__GOODIX_ALGO_CALL_MODE__)
+#if 0 /* [DBG_HOOK] — 已禁用：热路径调试输出导致FIFO溢出 */
+    rt_kprintf("[DBG_HOOK] AlgoCalc funcID=0x%X frameCnt=%lu\r\n",
+               (unsigned)pstFrameInfo->unFunctionID,
+               (unsigned long)pstFrameInfo->punFrameCnt[0]);
+#endif
     GH30X_AlgoCalculate(pstFrameInfo->unFunctionID);
 #endif
 
@@ -89,13 +95,134 @@ void Gh30xAlgorithmGetIoDataHookFunc(const STGh30xFrameInfo *const pstFrameInfo)
         pstFrameInfo->pstAlgoResult != 0)
     {
         STGh30xAlgoResult *pr = pstFrameInfo->pstAlgoResult;
-        if (pr->uchUpdateFlag != 0)
+        GU8 uchGain = (pstFrameInfo->punRawdata[0] >> 24) & 0x07;
+
+#if 0 /* [DBG_HR] — 已禁用：热路径调试输出导致FIFO溢出 */
+        GU32 ppg = (pstFrameInfo->punRawdata[0] >> 7) & 0x1FFFF;
+        rt_kprintf("[DBG_HR] AlgoResult: UpdateFlag=%d BPM=%d score=%d level=%d gain=%d ppg=%u\r\n",
+                   (int)pr->uchUpdateFlag, (int)pr->snResult[0],
+                   (int)pr->snResult[1], (int)pr->snResult[3],
+                   (int)uchGain, (unsigned)ppg);
+#endif
+
+        /* gain过滤：gain>3说明信号极弱(AGC已拉到高增益)，数据不可靠，跳过HR更新 */
+        if (uchGain > 3)
         {
-            GS32 bpm = pr->snResult[0];
-            if (bpm > 0 && bpm <= 240)
+#if 0 /* [DBG_HR] — 已禁用 */
+            rt_kprintf("[DBG_HR] SKIP: gain=%d too high\r\n", (int)uchGain);
+#endif
+        }
+        else
+        {
+            if (pr->uchUpdateFlag != 0)
             {
-                gh30x_hr_ui_notify_hr((uint8_t)bpm, 1);
+                GS32 bpm = pr->snResult[0];
+#if 0 /* [DBG_HR] — 已禁用 */
+                GS32 score = pr->snResult[1];  // valid_score (0-100)
+                GS32 level = pr->snResult[3];  // valid_level (0-3)
+#endif
+
+                if (bpm > 0 && bpm <= 240)
+                {
+#if 0 /* [DBG_HR] — 已禁用 */
+                    rt_kprintf("[DBG_HR] NOTIFY: bpm=%d score=%d level=%d\r\n",
+                               (int)bpm, (int)score, (int)level);
+#endif
+                    gh30x_hr_ui_notify_hr((uint8_t)bpm, 1);
+                    /* 不再用 HR 结果强制覆盖佩戴状态。
+                     * 佩戴状态完全由 NADT 算法决定，避免 wear 状态抖动。 */
+                }
+                else
+                {
+#if 0 /* [DBG_HR] — 已禁用 */
+                    rt_kprintf("[DBG_HR] REJECT: bpm=%d out of range\r\n", (int)bpm);
+#endif
+                }
             }
+            else
+            {
+#if 0 /* [DBG_HR] — 已禁用 */
+                rt_kprintf("[DBG_HR] NO_UPDATE: algo not ready yet\r\n");
+#endif
+            }
+        }
+    }
+    else
+    {
+#if 0 /* [DBG_HR] — 已禁用 */
+        if (pstFrameInfo != 0 && pstFrameInfo->unFunctionID != 0)
+        {
+            rt_kprintf("[DBG_HR] SKIP: funcID=0x%X (not HR)\r\n",
+                       (unsigned)pstFrameInfo->unFunctionID);
+        }
+#endif
+    }
+#endif
+
+#if (__GOODIX_ALGO_CALL_MODE__) && (__USE_GOODIX_SOFT_ADT_ALGORITHM__)
+    /* NADT佩戴状态 → UI 队列
+     * 在 __GET_RAWDATA_WITHOUT_ALGO_HANDLE==1 路径中，
+     * GH30xSoftAdtAlgoExe 将 NADT 结果存储在 snResult[0] 和 snResult[1]，
+     * 并在 lNadtResult[0]!=0 时设置 uchUpdateFlag=1。
+     * 旧代码读的是 snResult[12]/[13]（来自 gh3011_algo_calculate_hook 路径），
+     * 导致读到未初始化内存，NADT 状态永远不正确。 */
+    if (pstFrameInfo != 0 &&
+        (pstFrameInfo->unFunctionID & GH30X_FUNCTION_SOFT_ADT) != 0 &&
+        pstFrameInfo->pstAlgoResult != 0)
+    {
+        STGh30xAlgoResult *pr = pstFrameInfo->pstAlgoResult;
+        GS32 nadt_status = pr->snResult[0];   // lNadtResult[0]: 0=无更新, 1=佩戴, 2=未佩戴
+        GS32 nadt_confidence = pr->snResult[1]; // lNadtResult[1]: 置信度
+
+#if 1 /* [DBG_NADT_HOOK] */
+        // 详细记录 NADT hook 中的帧信息
+        GU8 uchChnlNum = pstFrameInfo->pstFunctionInfo->uchChnlNum;
+        GU8 uchGain0 = (pstFrameInfo->punRawdata[0] >> 24) & 0x07;
+        GU8 uchGain1 = (pstFrameInfo->punRawdata[1] >> 24) & 0x07;
+        GU32 raw0_24 = pstFrameInfo->punRawdata[0] & 0x00FFFFFF;
+        GU32 raw1_24 = pstFrameInfo->punRawdata[1] & 0x00FFFFFF;
+        GU8 uchDrvCur0 = pstFrameInfo->pchDrvCurrentCode[0];
+        GU8 uchDrvCur1 = pstFrameInfo->pchDrvCurrentCode[1];
+
+        rt_kprintf("[DBG_NADT_HOOK] frame=%lu result=(%d,%d) uchUpdateFlag=%d chnlNum=%d\r\n",
+                   (unsigned long)pstFrameInfo->punFrameCnt[0],
+                   (int)nadt_status, (int)nadt_confidence,
+                   (int)pr->uchUpdateFlag, (int)uchChnlNum);
+        rt_kprintf("[DBG_NADT_HOOK]   rawdata[0]=0x%08X rawdata[1]=0x%08X\r\n",
+                   (unsigned)pstFrameInfo->punRawdata[0],
+                   (unsigned)pstFrameInfo->punRawdata[1]);
+        rt_kprintf("[DBG_NADT_HOOK]   Phase0_24bit=%u gain0=%u drvCur0=%u Phase1_24bit=%u gain1=%u drvCur1=%u\r\n",
+                   (unsigned)raw0_24, (unsigned)uchGain0, (unsigned)uchDrvCur0,
+                   (unsigned)raw1_24, (unsigned)uchGain1, (unsigned)uchDrvCur1);
+        rt_kprintf("[DBG_NADT_HOOK]   gSensor=(%d,%d,%d) chnlMap[0]=%d chnlMap[1]=%d divder=%d\r\n",
+                   (int)pstFrameInfo->pusGsensordata[0],
+                   (int)pstFrameInfo->pusGsensordata[1],
+                   (int)pstFrameInfo->pusGsensordata[2],
+                   (int)pstFrameInfo->puchChnlMap[0],
+                   (int)pstFrameInfo->puchChnlMap[1],
+                   (int)pstFrameInfo->pstFunctionInfo->uchDivder);
+
+        // 记录 snResult 完整数组 (前8个元素)
+        rt_kprintf("[DBG_NADT_HOOK]   snResult[0..7]=(%d,%d,%d,%d,%d,%d,%d,%d)\r\n",
+                   (int)pr->snResult[0], (int)pr->snResult[1],
+                   (int)pr->snResult[2], (int)pr->snResult[3],
+                   (int)pr->snResult[4], (int)pr->snResult[5],
+                   (int)pr->snResult[6], (int)pr->snResult[7]);
+#endif
+
+        if (pr->uchUpdateFlag != 0 && nadt_status != 0)
+        {
+            uint8_t wear = GH30X_WEAR_STATUS_UNKNOWN;
+            if (nadt_status == 2) {
+                wear = GH30X_WEAR_STATUS_OFF;
+            } else if (nadt_status == 1) {
+                wear = GH30X_WEAR_STATUS_WEARING;
+            }
+#if 1 /* [DBG_NADT] */
+            rt_kprintf("[DBG_NADT] wear status: %d -> %d (confidence=%d)\r\n",
+                       (int)nadt_status, (int)wear, (int)nadt_confidence);
+#endif
+            gh30x_hr_ui_notify_wear(wear);
         }
     }
 #endif
@@ -451,6 +578,17 @@ void gh3011_algo_calculate_hook(EMFunctionID function_id,
 #if (__HBD_HB_ALGORITHM_ENABLE__)
     goodix_hba_input_rawdata stHbaInputRawdata = {0};
     goodix_hba_result stHbaResult = {0};
+    if (function_id == GH3011_FUNC_OFFSET_HR)
+    {
+#if 1 /* [DBG_ALGO] */
+        rt_kprintf("[DBG_ALGO] HBA input: rawdata=%d acc=(%d,%d,%d) frameID=%d\r\n",
+                   (int)algo_calc_info->nRawdata[0],
+                   (int)algo_calc_info->sAccData[0],
+                   (int)algo_calc_info->sAccData[1],
+                   (int)algo_calc_info->sAccData[2],
+                   (int)algo_calc_info->uchFrameID);
+#endif
+    }
 #endif
 #if (__HBD_HRV_ALGORITHM_ENABLE__)
     goodix_hrv_input_rawdata stHrvInputRawdata = {0};
@@ -488,6 +626,12 @@ void gh3011_algo_calculate_hook(EMFunctionID function_id,
     #else
         ret = (GS32)goodix_hba_update(&stHbaInputRawdata, &stHbaResult);
     #endif
+#if 1 /* [DBG_ALGO] */
+        rt_kprintf("[DBG_ALGO] HBA output: ret=%d out_flag=%d hba_out=%d score=%d snr=%d acc_scene=%d\r\n",
+                   (int)ret, (int)stHbaResult.hba_out_flag, (int)stHbaResult.hba_out,
+                   (int)stHbaResult.valid_score, (int)(stHbaResult.hba_snr * 100),
+                   (int)stHbaResult.hba_acc_scence);
+#endif
         if (stHbaResult.hba_out_flag == 1 && ret == GX_ALGO_HBA_SUCCESS)
         {
             algo_result->uchUpdateFlag = 1;

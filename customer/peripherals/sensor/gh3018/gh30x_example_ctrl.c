@@ -15,6 +15,7 @@
 #if (__USE_GOODIX_APP__)
 #endif
 
+#include <rtthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1337,8 +1338,15 @@ GU16 HBD_I2cReadRegBitField(GU16 usRegAddr, GU8 uchLsb, GU8 uchMsb)
     GU16 usRegData = 0;
     HBD_TryToWakeUp();
     usRegData = HBD_I2cReadReg(usRegAddr);
+#if 1 /* [DBG_BITF] */
+    rt_kprintf("[DBG_BITF] ReadRegBitField: addr=0x%04X lsb=%d msb=%d mask=0x%04X raw=0x%04X\r\n",
+               (unsigned)usRegAddr, (int)uchLsb, (int)uchMsb, (unsigned)usMakData, (unsigned)usRegData);
+#endif
     GH30X_VAL_GET_BIT(usRegData, usMakData);
     usRegData >>= uchLsb;
+#if 1 /* [DBG_BITF] */
+    rt_kprintf("[DBG_BITF] after mask: result=%d\r\n", (int)usRegData);
+#endif
     return usRegData;
 }
 
@@ -1815,7 +1823,7 @@ void HBD_VirtualConfig(GU16 usAddr, GU16 usData)
                 }
                 else
                 {
-                    g_stAutoledWrtRegCheck.unWrtRegThres = HBD_GET_LOW_BYTE_FROM_WORD(usData) * 1000;// write reg confirm time£¬default 5s
+                    g_stAutoledWrtRegCheck.unWrtRegThres = HBD_GET_LOW_BYTE_FROM_WORD(usData) * 1000;// write reg confirm timeï¼Œdefault 5s
                 }
                 break;
             case 0x2A3E:
@@ -2292,8 +2300,27 @@ void Gh30xGetChnlInfo(void)
     GU8 uchLedEnBit;
     GU8 uchLogicChnlMapIndex;
 
-    uchLedEnBit = HBD_I2cReadRegBitField(HBD_CONFIG_REG_ADDR, 0, 2);
-    uchLogicChnlMapIndex = HBD_I2cReadRegBitField(HBD_CONFIG_REG_ADDR, 6, 8);
+    /* Read full register first (more reliable than bit-field reads after config load) */
+    GU16 raw_reg = HBD_I2cReadReg(HBD_CONFIG_REG_ADDR);
+
+    /* If first read returns 0 (chip not ready after IDLE cmd), retry with delay */
+    if (0x0000 == raw_reg)
+    {
+        HBD_DelayUs(1000);  /* wait 1ms for chip to stabilize */
+        raw_reg = HBD_I2cReadReg(HBD_CONFIG_REG_ADDR);
+#if 1 /* [DBG_CHNL] */
+        rt_kprintf("[DBG_CHNL] GetChnlInfo: retry after delay, raw_reg=0x%04X\r\n", (unsigned)raw_reg);
+#endif
+    }
+
+    /* Extract bit fields locally instead of separate I2C reads */
+    uchLedEnBit = (GU8)(raw_reg & 0x0007);           /* bits[2:0] */
+    uchLogicChnlMapIndex = (GU8)((raw_reg >> 6) & 0x0007);  /* bits[8:6] */
+
+#if 1 /* [DBG_CHNL] */
+    rt_kprintf("[DBG_CHNL] GetChnlInfo: raw_reg=0x%04X LedEnBit=%d LogicMap=%d\r\n",
+               (unsigned)raw_reg, (int)uchLedEnBit, (int)uchLogicChnlMapIndex);
+#endif
 
     g_uchNeedReadRawdataCount = 0;
     memset((GU8*)g_pstGh30xChnlInfo, 0xFF, sizeof(g_pstGh30xChnlInfo));
@@ -2349,9 +2376,9 @@ static void HBD_CalcRawdataCount(GU16 usHbdConfigRegVal)
     if ((usHbdConfigRegVal & 0x000E) == 0x000E)
     {
         g_uchNeedReadRawdataCount = 1;
-        if ((usHbdConfigRegVal & 0x001E) == 0x001E) //ºÏ³É´òÂë: led1ºÍled2¹²ÏíÅäÖÃ£¬ÒÔled1ÅäÖÃÎª×¼
+        if ((usHbdConfigRegVal & 0x001E) == 0x001E) //åˆæˆæ‰“ç : led1å’Œled2å…±äº«é…ç½®ï¼Œä»¥led1é…ç½®ä¸ºå‡†
         {
-            g_usReadRawdataRegList[0] = HBD_LED0_DATA_L_REG_ADDR + 4;  //µ÷½ÚLED1µÄµçÁ÷ºÍÔöÒæ led1ºÍled2¹²ÏíÅäÖÃ
+            g_usReadRawdataRegList[0] = HBD_LED0_DATA_L_REG_ADDR + 4;  //è°ƒèŠ‚LED1çš„ç”µæµå’Œå¢ç›Š led1å’Œled2å…±äº«é…ç½®
         }
     }
 }
@@ -2727,7 +2754,7 @@ GS8 HBD_AutoLedCurrentMaxThrConfig(GU8 uchAutoledCurrentMaxThrVal)
 /****************************************************************
 * Description: Calculate Sample Rate
 * Input:  None
-* Return: Sample rate(Hz)  Õı³£ÅäÖÃ²ÉÑùÂÊÓ¦¸Ã´óÓÚ25Hz£¬ÇÒÎª25µÄÕûÊı±¶
+* Return: Sample rate(Hz)  æ­£å¸¸é…ç½®é‡‡æ ·ç‡åº”è¯¥å¤§äº25Hzï¼Œä¸”ä¸º25çš„æ•´æ•°å€
 ******************************************************************/
 static GU16 HBD_AutoLedCalcuSampleRate()
 {
@@ -2736,12 +2763,12 @@ static GU16 HBD_AutoLedCalcuSampleRate()
     usRegVal = HBD_I2cReadReg(HBD_SAMPLE_RATE_REG_ADDR);
     if (0 == usRegVal)
     {
-        usSampleVal = HB_SAMPLING_RATE_SETTING; //Ä¬ÈÏÖµ
+        usSampleVal = HB_SAMPLING_RATE_SETTING; //é»˜è®¤å€¼
     }
     else
     {
         usSampleVal = (GU16)(HBD_SAMPLE_RATE_CLOCK_FREQ / usRegVal);
-        usSampleVal = ((usSampleVal + 12) / 25) * 25;  //È¡Õû²Ù×÷
+        usSampleVal = ((usSampleVal + 12) / 25) * 25;  //å–æ•´æ“ä½œ
     }
     return  usSampleVal;
 }
@@ -2759,10 +2786,10 @@ GS8 HBD_AutoLedReset(GU8 uchMode)
 
     for (uchIndex = 0; uchIndex < HBD_AUTO_LED_MAX_CHANNEL_NUM; uchIndex++)
     {
-        /* ¼ÆËãÀíÏëÄ¿±êÖµ Ideal = Low + (High - Low) * 0.8 */
+        /* è®¡ç®—ç†æƒ³ç›®æ ‡å€¼ Ideal = Low + (High - Low) * 0.8 */
         g_unIdealTargetValueArr[uchIndex] = (GU32)(g_stAutoLedConfig.stAutoLedChannel[uchIndex].unTargetLowerThr * (1 - g_fIdealCalcRatio) + \
             g_stAutoLedConfig.stAutoLedChannel[uchIndex].unTargetUpperThr * g_fIdealCalcRatio);
-        /* ÏŞÖÆµ½ 50000 */
+        /* é™åˆ¶åˆ° 50000 */
         g_unIdealTargetValueArr[uchIndex] = (g_unIdealTargetValueArr[uchIndex] > 50000) ? 50000 : g_unIdealTargetValueArr[uchIndex];
 
         g_unIdealTargetTrigArr[uchIndex] = (GU32)(g_stAutoLedConfig.stAutoLedChannel[uchIndex].unTargetLowerThr * (1 - g_fIdealTrigRatio) + \
@@ -2771,32 +2798,32 @@ GS8 HBD_AutoLedReset(GU8 uchMode)
             g_unIdealTargetTrigArr[uchIndex] : g_stAutoLedConfig.stAutoLedChannel[uchIndex].unTargetLowerThr ;
 //        g_unIdealTargetTrigArr[uchIndex] = g_unIdealTargetTrigArr[uchIndex];
 
-        /* ³õÊ¼»¯ÀíÏëÄ¿±êÖµµ÷½Ú½á¹¹Ìå */
+        /* åˆå§‹åŒ–ç†æƒ³ç›®æ ‡å€¼è°ƒèŠ‚ç»“æ„ä½“ */
         memset(&g_stIdealAdjust.stIdealAdjustCh[uchIndex], 0, sizeof(ST_IDEAL_ADJUST_CH));
-        /* ³õÊ¼»¯±³¾°¹âµ÷½Ú½á¹¹Ìå */
+        /* åˆå§‹åŒ–èƒŒæ™¯å…‰è°ƒèŠ‚ç»“æ„ä½“ */
         memset(&g_stBGAdj.stBGAdjCh[uchIndex], 0, sizeof(ST_BG_ADJUST_CH));
         memset(&g_stBufferBGInfo[uchIndex], 0, sizeof(ST_RECURSION_CALC_NOSTD));
 
-        /* ³õÊ¼»¯ÔË¶¯Ïà¹Ø½á¹¹Ìå */
+        /* åˆå§‹åŒ–è¿åŠ¨ç›¸å…³ç»“æ„ä½“ */
         //gfMotionTrigRatio[uchIndex] = g_fTriggerIdealAdjustRatio[uchIndex];
         gfMotionTrigRatio[uchIndex] = 0.0f;
 
-        /* ³õÊ¼»¯´¥·¢µ÷¹â½á¹¹Ìå */
+        /* åˆå§‹åŒ–è§¦å‘è°ƒå…‰ç»“æ„ä½“ */
         memset(&g_stTrigCalcInfo[uchIndex], 0, sizeof(ST_RECURSION_CALC_NOSTD));
-        /* ³õÊ¼»¯±¥ºÍÅĞ¶ÏãĞÖµ */
+        /* åˆå§‹åŒ–é¥±å’Œåˆ¤æ–­é˜ˆå€¼ */
         g_PpgSatThr[uchIndex] = g_stAutoLedConfig.stAutoLedChannel[uchIndex].unTargetUpperThr;
 
-        /* ³õÊ¼»¯È«¾ÖµçÁ÷ */
+        /* åˆå§‹åŒ–å…¨å±€ç”µæµ */
         g_uchAutoLedCurrentArr[uchIndex] = 0;
-        /* ³õÊ¼»¯Ğ´¼Ä´æÆ÷È·ÈÏ */
+        /* åˆå§‹åŒ–å†™å¯„å­˜å™¨ç¡®è®¤ */
         g_stAutoledWrtRegCheck.unWrtRegNormDuration[uchIndex] = g_stAutoledWrtRegCheck.unWrtRegThres;
     }
 
-    /* »ñÈ¡²ÉÑùÆµÂÊ */
+    /* è·å–é‡‡æ ·é¢‘ç‡ */
     usSampleVal = HBD_AutoLedCalcuSampleRate();
 
-    //Õı³£ÅäÖÃ²ÉÑùÂÊÓ¦¸Ã´óÓÚ25Hz£¬ÇÒÎª25µÄÕûÊı±¶(µ±Í¨ĞÅ´íÎó²ÉÑùÂÊËã´íÔÙËã3´Î)
-    if (!usSampleVal) //Èç¹û²ÉÑùÂÊÎª0
+    //æ­£å¸¸é…ç½®é‡‡æ ·ç‡åº”è¯¥å¤§äº25Hzï¼Œä¸”ä¸º25çš„æ•´æ•°å€(å½“é€šä¿¡é”™è¯¯é‡‡æ ·ç‡ç®—é”™å†ç®—3æ¬¡)
+    if (!usSampleVal) //å¦‚æœé‡‡æ ·ç‡ä¸º0
     {
         Try_time = 3;
         while ((!usSampleVal) && Try_time)
@@ -2805,30 +2832,30 @@ GS8 HBD_AutoLedReset(GU8 uchMode)
             usSampleVal = HBD_AutoLedCalcuSampleRate();
         }
 
-        if (!usSampleVal) //3´ÎÖØĞÂ¼ÆËãÖ®ºó²ÉÑùÂÊÁËÒÀÈ»ÎªÁã ÉÏ±¨´íÎó
+        if (!usSampleVal) //3æ¬¡é‡æ–°è®¡ç®—ä¹‹åé‡‡æ ·ç‡äº†ä¾ç„¶ä¸ºé›¶ ä¸ŠæŠ¥é”™è¯¯
         {
             return HBD_RET_COMM_ERROR;
         }
     }
 
-    /* ²ÉÑùĞÅÏ¢ */
+    /* é‡‡æ ·ä¿¡æ¯ */
     g_stSampleInfo.unSampleFre = usSampleVal;  //fre
-    g_stSampleInfo.unSampleTim = 1000 / g_stSampleInfo.unSampleFre; //Ã¿Ö¡¶ÔÓ¦Ê±¼äms
-    g_stSampleInfo.unSampleFifoDuration = 0; //³õÊ¼»¯Ò»´ÎfifoÖĞ¶Ï¶ÔÓ¦µÄÊ±¼ä
-    g_stSampleInfo.unAutoLedCalcLen = usSampleVal / 5;  //¼ÆËã´¥·¢µ÷¹âµÄ³¤¶È
+    g_stSampleInfo.unSampleTim = 1000 / g_stSampleInfo.unSampleFre; //æ¯å¸§å¯¹åº”æ—¶é—´ms
+    g_stSampleInfo.unSampleFifoDuration = 0; //åˆå§‹åŒ–ä¸€æ¬¡fifoä¸­æ–­å¯¹åº”çš„æ—¶é—´
+    g_stSampleInfo.unAutoLedCalcLen = usSampleVal / 5;  //è®¡ç®—è§¦å‘è°ƒå…‰çš„é•¿åº¦
 
-    /* ³õÊ¼»¯Gsensor¼ÆËã½á¹¹Ìå */
+    /* åˆå§‹åŒ–Gsensorè®¡ç®—ç»“æ„ä½“ */
     //memset(&g_stAutoLedAccInfo,0,sizeof(ST_RECURSION_CALC_STD));
 
-    /****************** È«¾Ö±äÁ¿·µ»Ø³õÊ¼»¯ **********************/
-    g_uchAutoLedErrorFlag = 0; //µ÷¹âÊ§°Ü
-    g_uchAutoLedLastFlag = 0; //µ÷¹â±ê¼Ç
+    /****************** å…¨å±€å˜é‡è¿”å›åˆå§‹åŒ– **********************/
+    g_uchAutoLedErrorFlag = 0; //è°ƒå…‰å¤±è´¥
+    g_uchAutoLedLastFlag = 0; //è°ƒå…‰æ ‡è®°
 
-    /*µ¥Ö¡Ä£Ê½ */
+    /*å•å¸§æ¨¡å¼ */
 
-    g_uchSoftLEDNewdataModeCNT = 0;//¼ÆÊıÆ÷
+    g_uchSoftLEDNewdataModeCNT = 0;//è®¡æ•°å™¨
 
-    /* µ¥Í¨µÀ ÈôµÚ¶şÍ¨µÀ¿ªÆôÔò¹Ø±Õ */
+    /* å•é€šé“ è‹¥ç¬¬äºŒé€šé“å¼€å¯åˆ™å…³é—­ */
     if ((g_uchNeedReadRawdataCount == 1) && (g_stAutoLedConfig.stAutoLedChannel[1].emAutoledEnable == HBD_FUNCTIONAL_STATE_ENABLE))
     {
         g_stAutoLedConfig.stAutoLedChannel[1].emAutoledEnable = HBD_FUNCTIONAL_STATE_DISABLE;
@@ -2846,8 +2873,8 @@ GS8 HBD_AutoLedReset(GU8 uchMode)
 static void HBD_AutoLedWriteReg(GU8 uchGainArr[2], GU8 uchGainShiftArr[2], GU16 usLastGainMsk,
     GU8 uchCurrentArr[2], GU8 uchCurrentShift[2], GU32 unLastCurrentMsk)
 {
-    HBD_I2cWriteReg(HBD_LED27_REG_ADDR, usLastGainMsk | (GU16)(uchGainArr[0] << uchGainShiftArr[0]) | (GU16)(uchGainArr[1] << uchGainShiftArr[1]));//Ğ´Gain
-    HBD_I2cWriteRawdataReg(HBD_LED12_REG_ADDR, unLastCurrentMsk | (GU32)(uchCurrentArr[0] << uchCurrentShift[0]) | (GU32)(uchCurrentArr[1] << uchCurrentShift[1]));//Ğ´µçÁ÷
+    HBD_I2cWriteReg(HBD_LED27_REG_ADDR, usLastGainMsk | (GU16)(uchGainArr[0] << uchGainShiftArr[0]) | (GU16)(uchGainArr[1] << uchGainShiftArr[1]));//å†™Gain
+    HBD_I2cWriteRawdataReg(HBD_LED12_REG_ADDR, unLastCurrentMsk | (GU32)(uchCurrentArr[0] << uchCurrentShift[0]) | (GU32)(uchCurrentArr[1] << uchCurrentShift[1]));//å†™ç”µæµ
     // LOGY("[AutoLED][Wrt_Reg][CHA]: C0:%d G0:%d C1:%d G1:%d ", uchCurrentArr[0], uchGainArr[0], uchCurrentArr[1], uchGainArr[1]);
 }
 
@@ -2875,8 +2902,8 @@ static void HBD_AutoLedWriteReg(GU8 uchGainArr[2], GU8 uchGainShiftArr[2], GU16 
 //        else{
 //            *lumax = luinput > *lumax ? luinput : *lumax;
 //            *lumin = luinput < *lumin ? luinput : *lumin;
-//            *fstd = *fstd + (GF32)(uNum - 1) / uNum * (luinput - *favg) * (luinput - *favg);//µİ¹é¼ÆËã±ê×¼²î
-//            *favg = *favg + (GF32)(luinput - *favg) / uNum;//µİ¹é¼ÆËã¾ùÖµ
+//            *fstd = *fstd + (GF32)(uNum - 1) / uNum * (luinput - *favg) * (luinput - *favg);//é€’å½’è®¡ç®—æ ‡å‡†å·®
+//            *favg = *favg + (GF32)(luinput - *favg) / uNum;//é€’å½’è®¡ç®—å‡å€¼
 //        }
 //        *ludiff = *lumax - *lumin;
 //    }
@@ -2906,7 +2933,7 @@ static void HBD_AutoLedRecursionCalcNoSTD(GU32 luinput, GF32 *favg, GU32 *lumin,
         {
             *lumax = luinput > *lumax ? luinput : *lumax;
             *lumin = luinput < *lumin ? luinput : *lumin;
-            *favg = *favg + (GF32)(luinput - *favg) / uNum;//µİ¹é¼ÆËã¾ùÖµ
+            *favg = *favg + (GF32)(luinput - *favg) / uNum;//é€’å½’è®¡ç®—å‡å€¼
         }
         *ludiff = *lumax - *lumin;
     }
@@ -2924,7 +2951,7 @@ static void HBD_AutoLedRecursionCalcNoSTD(GU32 luinput, GF32 *favg, GU32 *lumin,
 //    GS16 sACCX = 0;
 //    GS16 sACCY = 0;
 //    GS16 sACCZ = 0;
-//    if (HBD_PTR_NULL == stGsAxisValue)//¿ÕÖ¸Õë ·µ»Ø0
+//    if (HBD_PTR_NULL == stGsAxisValue)//ç©ºæŒ‡é’ˆ è¿”å›0
 //    {
 //        pstaccstd->fAvg = 0;
 //        pstaccstd->uMax = 0;
@@ -2934,18 +2961,18 @@ static void HBD_AutoLedRecursionCalcNoSTD(GU32 luinput, GF32 *favg, GU32 *lumin,
 //    }
 //    for (GS32 i = 0; i < lLength; i++)
 //    {
-//        sACCX = stGsAxisValue[i].sXAxisVal / sGsensorRightShift;//XÖá¹éÒ»»¯
-//        sACCY = stGsAxisValue[i].sYAxisVal / sGsensorRightShift;//YÖá¹éÒ»»¯
-//        sACCZ = stGsAxisValue[i].sZAxisVal / sGsensorRightShift;//ZÖá¹éÒ»»¯
-//        unACC = (GU32)sqrt(sACCX * sACCX + sACCY * sACCY + sACCZ * sACCZ);//Ê¸Á¿ºÍ
-//        HBD_AutoLedRecursionCalc(unACC, &pstaccstd->fStd, &pstaccstd->fAvg, &pstaccstd->uMin, &pstaccstd->uMax, &pstaccstd->uDif, i + 1);//¼ÆËã±ê×¼²î
+//        sACCX = stGsAxisValue[i].sXAxisVal / sGsensorRightShift;//Xè½´å½’ä¸€åŒ–
+//        sACCY = stGsAxisValue[i].sYAxisVal / sGsensorRightShift;//Yè½´å½’ä¸€åŒ–
+//        sACCZ = stGsAxisValue[i].sZAxisVal / sGsensorRightShift;//Zè½´å½’ä¸€åŒ–
+//        unACC = (GU32)sqrt(sACCX * sACCX + sACCY * sACCY + sACCZ * sACCZ);//çŸ¢é‡å’Œ
+//        HBD_AutoLedRecursionCalc(unACC, &pstaccstd->fStd, &pstaccstd->fAvg, &pstaccstd->uMin, &pstaccstd->uMax, &pstaccstd->uDif, i + 1);//è®¡ç®—æ ‡å‡†å·®
 //    }
 
 //    if (1 == lLength || 0 == lLength){
-//        pstaccstd->fStd = 0;//³¤¶ÈĞ¡ÓÚ1 ±ê×¼²îÎª0
+//        pstaccstd->fStd = 0;//é•¿åº¦å°äº1 æ ‡å‡†å·®ä¸º0
 //    }
 //    else{
-//        pstaccstd->fStd = sqrtf(pstaccstd->fStd / (lLength - 1));//µİ¹é±ê×¼²î¹«Ê½ STD = SQRT(STD(t-1)/(NUM-1))
+//        pstaccstd->fStd = sqrtf(pstaccstd->fStd / (lLength - 1));//é€’å½’æ ‡å‡†å·®å…¬å¼ STD = SQRT(STD(t-1)/(NUM-1))
 //    }
     //LOGY("");
     // LOGY("[AutoLED][ACCINFO][ACC]: Std:%5.1f Avg:%d Max:%d Min:%d Dif:%d", pstaccstd->fStd, (int)pstaccstd->fAvg,\
@@ -2959,9 +2986,9 @@ static void HBD_AutoLedRecursionCalcNoSTD(GU32 luinput, GF32 *favg, GU32 *lumin,
 ******************************************************************/
 static void HBD_AutoLedTrigRecursionCalc(GU32 uRawdata[2], GU16 usNum)
 {
-    for (GU8 i = 0; i<HBD_AUTO_LED_MAX_CHANNEL_NUM; i++)//¶ÔÃ¿¸öÍ¨µÀµ¥¶Àµ÷ÓÃ½Ó¿Ú¼ÆËã¾ùÖµ×î´óÖµ×îĞ¡Öµ
+    for (GU8 i = 0; i<HBD_AUTO_LED_MAX_CHANNEL_NUM; i++)//å¯¹æ¯ä¸ªé€šé“å•ç‹¬è°ƒç”¨æ¥å£è®¡ç®—å‡å€¼æœ€å¤§å€¼æœ€å°å€¼
     {
-        //ÓÃÓÚ¼ÆËãrawdataµÄ¾ùÖµ
+        //ç”¨äºè®¡ç®—rawdataçš„å‡å€¼
         HBD_AutoLedRecursionCalcNoSTD(uRawdata[i] & 0x1ffff, &g_stTrigCalcInfo[i].fAvg, &g_stTrigCalcInfo[i].uMin, &g_stTrigCalcInfo[i].uMax, &g_stTrigCalcInfo[i].uDif, usNum);
     }
 }
@@ -2973,9 +3000,9 @@ static void HBD_AutoLedTrigRecursionCalc(GU32 uRawdata[2], GU16 usNum)
 ******************************************************************/
 static void HBD_AutoLedBGBufferRecursionCalc(GU32 uRawdata[2], GU16 usNum)
 {
-    for (GU8 i = 0; i<HBD_AUTO_LED_MAX_CHANNEL_NUM; i++)//¶ÔÃ¿¸öÍ¨µÀµ¥¶Àµ÷ÓÃ½Ó¿Ú¼ÆËã¾ùÖµ×î´óÖµ×îĞ¡Öµ
+    for (GU8 i = 0; i<HBD_AUTO_LED_MAX_CHANNEL_NUM; i++)//å¯¹æ¯ä¸ªé€šé“å•ç‹¬è°ƒç”¨æ¥å£è®¡ç®—å‡å€¼æœ€å¤§å€¼æœ€å°å€¼
     {
-        //ÓÃÓÚ¼ÆËã±³¾°¹â
+        //ç”¨äºè®¡ç®—èƒŒæ™¯å…‰
         HBD_AutoLedRecursionCalcNoSTD(uRawdata[i] >> 20 & 0x07, &g_stBufferBGInfo[i].fAvg, &g_stBufferBGInfo[i].uMin, &g_stBufferBGInfo[i].uMax, &g_stBufferBGInfo[i].uDif, usNum);
     }
 }
@@ -2994,27 +3021,27 @@ static void HBD_AutoLedPpgSatJudge(GU32 uRawdata[2])
 {
     g_stPpgSatInfo.Sat_CheckCnt++;
     GU32 Upper = 0;
-    for (GU8 i = 0; i<HBD_AUTO_LED_MAX_CHANNEL_NUM; i++)//¶ÔÃ¿¸öÍ¨µÀµ¥¶Àµ÷ÓÃ½Ó¿Ú¼ÆËã±¥ºÍÊı¾İµÄ¸öÊı
+    for (GU8 i = 0; i<HBD_AUTO_LED_MAX_CHANNEL_NUM; i++)//å¯¹æ¯ä¸ªé€šé“å•ç‹¬è°ƒç”¨æ¥å£è®¡ç®—é¥±å’Œæ•°æ®çš„ä¸ªæ•°
     {
-        Upper = g_stAutoLedConfig.stAutoLedChannel[i].unTrigerUpperThr;//Íâ²¿ÅäÖÃ´¥·¢ÉÏÏŞ
+        Upper = g_stAutoLedConfig.stAutoLedChannel[i].unTrigerUpperThr;//å¤–éƒ¨é…ç½®è§¦å‘ä¸Šé™
 
-        switch (g_stBGAdj.stBGAdjCh[i].uchUpperlevel)//¸ù¾İ±³¾°¹âÇĞ»»´¥·¢ãĞÖµ
+        switch (g_stBGAdj.stBGAdjCh[i].uchUpperlevel)//æ ¹æ®èƒŒæ™¯å…‰åˆ‡æ¢è§¦å‘é˜ˆå€¼
         {
             case 0:
             break;
-            case 1://¶ÔÓ¦3-4Ö®¼äµÄ±³¾°¹â
+            case 1://å¯¹åº”3-4ä¹‹é—´çš„èƒŒæ™¯å…‰
             Upper = 49000;
             break;
-            case 2://¶ÔÓ¦±³¾°¹â4
+            case 2://å¯¹åº”èƒŒæ™¯å…‰4
             Upper = 45000;
             break;
-            case 3://¶ÔÓ¦Ç¿¹â
+            case 3://å¯¹åº”å¼ºå…‰
             Upper = 30000;
             break;
             default:
             break;
         }
-        g_PpgSatThr[i]= Upper;  ////ĞŞ¸Ä±¥ºÍãĞÖµÎª´¥·¢ÉÏÏŞ
+        g_PpgSatThr[i]= Upper;  ////ä¿®æ”¹é¥±å’Œé˜ˆå€¼ä¸ºè§¦å‘ä¸Šé™
 
         GU32 ppgraw = (uRawdata[i] & 0x1ffff);
         if (ppgraw >  g_PpgSatThr[i])
@@ -3026,13 +3053,13 @@ static void HBD_AutoLedPpgSatJudge(GU32 uRawdata[2])
 
 //    gs_flag1 = g_stPpgSatInfo.Sat_cnt[0];
 //    gs_flag2 = g_stPpgSatInfo.Sat_cnt[1];
-    GU32 SAT_CHECK_NUM_MAX = g_stSampleInfo.unSampleFre*5;    //5ÃëÊ±¼ä´°
-    GU32 SAT_CNT_THRESHOLD = SAT_CHECK_NUM_MAX/16;    //  ±¥ºÍÅĞ¶ÏãĞÖµ£º1/16µÄÊı¾İ
+    GU32 SAT_CHECK_NUM_MAX = g_stSampleInfo.unSampleFre*5;    //5ç§’æ—¶é—´çª—
+    GU32 SAT_CNT_THRESHOLD = SAT_CHECK_NUM_MAX/16;    //  é¥±å’Œåˆ¤æ–­é˜ˆå€¼ï¼š1/16çš„æ•°æ®
 
     if (g_stPpgSatInfo.Sat_CheckCnt >= SAT_CHECK_NUM_MAX)
     {
-        g_stPpgSatInfo.Sat_flag = 0 ; //Ò»´ÎÍ³¼Æ£¨5Ãë£©Ö®ºó³õÊ¼»¯±¥ºÍ±êÖ¾ £¬±¥ºÍ±êÖÂÖÃÎ»µÄ»°»á³ÖĞø5Ãë
-        for (GU8 j = 0; j<HBD_AUTO_LED_MAX_CHANNEL_NUM; j++)//¶ÔÃ¿¸öÍ¨µÀµ¥¶Àµ÷ÓÃ½Ó¿Ú¼ÆËã±¥ºÍÊı¾İµÄ¸öÊı
+        g_stPpgSatInfo.Sat_flag = 0 ; //ä¸€æ¬¡ç»Ÿè®¡ï¼ˆ5ç§’ï¼‰ä¹‹ååˆå§‹åŒ–é¥±å’Œæ ‡å¿— ï¼Œé¥±å’Œæ ‡è‡´ç½®ä½çš„è¯ä¼šæŒç»­5ç§’
+        for (GU8 j = 0; j<HBD_AUTO_LED_MAX_CHANNEL_NUM; j++)//å¯¹æ¯ä¸ªé€šé“å•ç‹¬è°ƒç”¨æ¥å£è®¡ç®—é¥±å’Œæ•°æ®çš„ä¸ªæ•°
         {
             if( g_stPpgSatInfo.Sat_cnt[j] >=  SAT_CNT_THRESHOLD)
             {
@@ -3049,15 +3076,15 @@ static void HBD_AutoLedPpgSatJudge(GU32 uRawdata[2])
 
 static void HBD_AutoLedPpgSatTrigerFlag( GU8 *uchAutoLedFlag, GU32 uRawdataAvg[2] )
 {
-    for (GU8 j = 0; j< g_uchNeedReadRawdataCount; j++) // ¶ÔÃ¿¸öÍ¨µÀ·Ö±ğ¿´ÊÇ·ñ´¥·¢±¥ºÍµ÷¹â
+    for (GU8 j = 0; j< g_uchNeedReadRawdataCount; j++) // å¯¹æ¯ä¸ªé€šé“åˆ†åˆ«çœ‹æ˜¯å¦è§¦å‘é¥±å’Œè°ƒå…‰
     {
         if (g_stAutoLedConfig.stAutoLedChannel[j].emAutoledEnable == HBD_FUNCTIONAL_STATE_ENABLE)
         {
-            // ±¥ºÍÇÒµ÷¹â¾ùÖµ´óÓÚÀíÏëÄ¿±êÖµÔò´¥·¢µ÷¹â£¬È·±£µçÁ÷ÏÂµ÷
+            // é¥±å’Œä¸”è°ƒå…‰å‡å€¼å¤§äºç†æƒ³ç›®æ ‡å€¼åˆ™è§¦å‘è°ƒå…‰ï¼Œç¡®ä¿ç”µæµä¸‹è°ƒ
             if ((g_stPpgSatInfo.Sat_adj_flag & (1 << j)) && (uRawdataAvg[j] > g_unIdealTargetValueArr[j]))
             {
                 *uchAutoLedFlag |= (1 << j);
-                g_stPpgSatInfo.Sat_adj_flag &= (~(1 << j)); // µ÷¹âÖ®ºóÇåÁã±êÖ¾Î» ·ÀÖ¹5ÃëÄÚ¶à´Î±¥ºÍ´¥·¢µ÷¹â
+                g_stPpgSatInfo.Sat_adj_flag &= (~(1 << j)); // è°ƒå…‰ä¹‹åæ¸…é›¶æ ‡å¿—ä½ é˜²æ­¢5ç§’å†…å¤šæ¬¡é¥±å’Œè§¦å‘è°ƒå…‰
 //              gs_flag4 |= (1<<j);
             }
         }
@@ -3081,29 +3108,29 @@ GU8 HBD_AutoLedGetCurrentAndGain(GU8 *puchGainArr, GU8 *puchGainShiftArr, GU16 *
     GU8 uchIndex = 0;
     GU8 nRes = 0;
 
-    *punLastCurrentMsk = HBD_I2cReadRawdataReg(HBD_LED17_REG_ADDR);//¶ÁÈ¡µçÁ÷¼Ä´æÆ÷
-    *pusLastGainMsk = HBD_I2cReadReg(HBD_LED27_REG_ADDR);//¶ÁÈ¡Gain¼Ä´æÆ÷
+    *punLastCurrentMsk = HBD_I2cReadRawdataReg(HBD_LED17_REG_ADDR);//è¯»å–ç”µæµå¯„å­˜å™¨
+    *pusLastGainMsk = HBD_I2cReadReg(HBD_LED27_REG_ADDR);//è¯»å–Gainå¯„å­˜å™¨
 
     for (uchIndex = 0; uchIndex < g_uchNeedReadRawdataCount; uchIndex++)
     {
-        puchCurrentShift[uchIndex] = (GU8)((g_usReadRawdataRegList[uchIndex] - HBD_LED0_DATA_L_REG_ADDR) * 2);//¼ÆËãÍ¨µÀÆ«ÒÆÁ¿
-        puchCurrentArr[uchIndex] = (*punLastCurrentMsk >> puchCurrentShift[uchIndex]) & 0xFF;//Í¨µÀµçÁ÷Öµ
-        g_uchAutoLedCurrentArr[uchIndex] = puchCurrentArr[uchIndex];  //¸øNADTÌá¹©µÄµçÁ÷Öµ
-        *punLastCurrentMsk &= ~(0x000000FF << puchCurrentShift[uchIndex]);//Í¨µÀMask
+        puchCurrentShift[uchIndex] = (GU8)((g_usReadRawdataRegList[uchIndex] - HBD_LED0_DATA_L_REG_ADDR) * 2);//è®¡ç®—é€šé“åç§»é‡
+        puchCurrentArr[uchIndex] = (*punLastCurrentMsk >> puchCurrentShift[uchIndex]) & 0xFF;//é€šé“ç”µæµå€¼
+        g_uchAutoLedCurrentArr[uchIndex] = puchCurrentArr[uchIndex];  //ç»™NADTæä¾›çš„ç”µæµå€¼
+        *punLastCurrentMsk &= ~(0x000000FF << puchCurrentShift[uchIndex]);//é€šé“Mask
 
-        puchGainShiftArr[uchIndex] = (GU8)((((g_usReadRawdataRegList[uchIndex] - HBD_LED0_DATA_L_REG_ADDR) / 4) * 3) + 4);//¼ÆËãÍ¨µÀÆ«ÒÆÁ¿
-        puchGainArr[uchIndex] = (*pusLastGainMsk >> puchGainShiftArr[uchIndex]) & 0x07;//Í¨µÀGain
-        *pusLastGainMsk &= ~(0x000000007 << puchGainShiftArr[uchIndex]);//Í¨µÀMask
+        puchGainShiftArr[uchIndex] = (GU8)((((g_usReadRawdataRegList[uchIndex] - HBD_LED0_DATA_L_REG_ADDR) / 4) * 3) + 4);//è®¡ç®—é€šé“åç§»é‡
+        puchGainArr[uchIndex] = (*pusLastGainMsk >> puchGainShiftArr[uchIndex]) & 0x07;//é€šé“Gain
+        *pusLastGainMsk &= ~(0x000000007 << puchGainShiftArr[uchIndex]);//é€šé“Mask
         // LOGY("[AutoLED][REG_G_C][CH%d]: G:%d C:%d", uchIndex, puchGainArr[uchIndex], puchCurrentArr[uchIndex]);
     }
-    if (2 == g_uchNeedReadRawdataCount)//ÓĞÍ¨µÀµÄµçÁ÷Îª0 ·µ»ØÒì³£
+    if (2 == g_uchNeedReadRawdataCount)//æœ‰é€šé“çš„ç”µæµä¸º0 è¿”å›å¼‚å¸¸
     {
         if ((0 == puchCurrentArr[0]) || (0 == puchCurrentArr[1]))
         {
             nRes = 1;
         }
     }
-    else if (1 == g_uchNeedReadRawdataCount)//µçÁ÷Îª0 ·µ»ØÒì³£
+    else if (1 == g_uchNeedReadRawdataCount)//ç”µæµä¸º0 è¿”å›å¼‚å¸¸
     {
         if ((0 == puchCurrentArr[0]))
         {
@@ -3128,55 +3155,55 @@ static GU8 HBD_AutoLEDBGProcess(GU8 uchGainArr[2], GU32 unRawdataAvgArr[2])
     for (GU8 uchChannelIndex = 0; uchChannelIndex < g_uchNeedReadRawdataCount; uchChannelIndex++)
     {
         if (g_stAutoLedConfig.stAutoLedChannel[uchChannelIndex].emAutoledEnable == HBD_FUNCTIONAL_STATE_ENABLE)
-        {//Ö»ÔÚÍ¨µÀ¿ªÆôµ÷¹âÊ±½øĞĞ
+        {//åªåœ¨é€šé“å¼€å¯è°ƒå…‰æ—¶è¿›è¡Œ
 
-            BGAvg = g_stBufferBGInfo[uchChannelIndex].fAvg;//¾ùÖµ
-            BGMin = (GU8)g_stBufferBGInfo[uchChannelIndex].uMin;//×îĞ¡Öµ
+            BGAvg = g_stBufferBGInfo[uchChannelIndex].fAvg;//å‡å€¼
+            BGMin = (GU8)g_stBufferBGInfo[uchChannelIndex].uMin;//æœ€å°å€¼
 
-            if (BGAvg >= g_stAutoLedConfig.uchBgStrongLightThr)//Ç¿¹â(BG5 ×î´ó·¶Î§:32768-49152)
+            if (BGAvg >= g_stAutoLedConfig.uchBgStrongLightThr)//å¼ºå…‰(BG5 æœ€å¤§èŒƒå›´:32768-49152)
             {
-                g_unIdealTargetValueArr[uchChannelIndex] = 26000;//BG£º5, Max:32768 80% -->26214
+                g_unIdealTargetValueArr[uchChannelIndex] = 26000;//BGï¼š5, Max:32768 80% -->26214
 
                 g_unIdealTargetTrigArr[uchChannelIndex] = (GU32)(g_unIdealTargetValueArr[uchChannelIndex] / 2);
                 g_unIdealTargetTrigArr[uchChannelIndex] = (g_unIdealTargetTrigArr[uchChannelIndex] > g_stAutoLedConfig.stAutoLedChannel[uchChannelIndex].unTargetLowerThr) ? \
                     g_unIdealTargetTrigArr[uchChannelIndex] : g_stAutoLedConfig.stAutoLedChannel[uchChannelIndex].unTargetLowerThr;
 
-                if ((GU32)g_stTrigCalcInfo[uchChannelIndex].fAvg > 30000) //BG£º5, Max:32768 90% -->30000
+                if ((GU32)g_stTrigCalcInfo[uchChannelIndex].fAvg > 30000) //BGï¼š5, Max:32768 90% -->30000
                 {
                     if (uchGainArr[uchChannelIndex] >= 2)
                     {
-                        uchGainArr[uchChannelIndex] -= 2;//Gain½µÁ½µµ
-                        g_stAutoLedConfig.stAutoLedChannel[uchChannelIndex].uchGainLimitThr = uchGainArr[uchChannelIndex]; //ÏŞÖÆGain
-                        g_uchAutoLedLastFlag |= 1 << uchChannelIndex; // È«¾Öµ÷¹â±ê¼Ç
+                        uchGainArr[uchChannelIndex] -= 2;//Gainé™ä¸¤æ¡£
+                        g_stAutoLedConfig.stAutoLedChannel[uchChannelIndex].uchGainLimitThr = uchGainArr[uchChannelIndex]; //é™åˆ¶Gain
+                        g_uchAutoLedLastFlag |= 1 << uchChannelIndex; // å…¨å±€è°ƒå…‰æ ‡è®°
                         uchRes = 1;
                     }
                     else if (0x1 == uchGainArr[uchChannelIndex]){
-                        uchGainArr[uchChannelIndex] = 0;//Gain×îĞ¡
-                        g_stAutoLedConfig.stAutoLedChannel[uchChannelIndex].uchGainLimitThr = 0;//ÏŞÖÆGain
-                        g_uchAutoLedLastFlag |= 1 << uchChannelIndex;// È«¾Öµ÷¹â±ê¼Ç
+                        uchGainArr[uchChannelIndex] = 0;//Gainæœ€å°
+                        g_stAutoLedConfig.stAutoLedChannel[uchChannelIndex].uchGainLimitThr = 0;//é™åˆ¶Gain
+                        g_uchAutoLedLastFlag |= 1 << uchChannelIndex;// å…¨å±€è°ƒå…‰æ ‡è®°
                         uchRes = 1;
                     }
-                    else{//×îĞ¡Öµ ÎŞ·¨¼ÌĞø½µ
-                        g_stAutoLedConfig.stAutoLedChannel[uchChannelIndex].uchGainLimitThr = 0;//ÏŞÖÆGain
+                    else{//æœ€å°å€¼ æ— æ³•ç»§ç»­é™
+                        g_stAutoLedConfig.stAutoLedChannel[uchChannelIndex].uchGainLimitThr = 0;//é™åˆ¶Gain
                     }
                     g_stBGAdj.stBGAdjCh[uchChannelIndex].uchBGLevelCnt = 0;
                 }
                 else{
-                    //Èç¹ûÉÏ´ÎÎªÇ¿¹â Ôò¼ÆÊıÆ÷Ôö¼Ó
+                    //å¦‚æœä¸Šæ¬¡ä¸ºå¼ºå…‰ åˆ™è®¡æ•°å™¨å¢åŠ 
                     (HBD_AUTOLED_BG_HIGHLIGHT == g_stBGAdj.stBGAdjCh[uchChannelIndex].uchLastBGLevel) ? \
                     (g_stBGAdj.stBGAdjCh[uchChannelIndex].uchBGLevelCnt += g_stSampleInfo.unSampleFifoDuration) : \
                         (g_stBGAdj.stBGAdjCh[uchChannelIndex].uchBGLevelCnt = g_stSampleInfo.unSampleFifoDuration);
-                    //ÖÜÆÚÅĞ¶Ï
+                    //å‘¨æœŸåˆ¤æ–­
                     if (g_stBGAdj.stBGAdjCh[uchChannelIndex].uchBGLevelCnt / (g_stBGAdj.uchBGReduceGainDuration * 1000))
                     {
-                        g_stAutoLedConfig.stAutoLedChannel[uchChannelIndex].uchGainLimitThr = uchGainArr[uchChannelIndex];//ÏŞÖÆGain
-                        g_stBGAdj.stBGAdjCh[uchChannelIndex].uchBGLevelCnt = 0;//¼ÆÊıÆ÷Çå0
-                        g_stBGAdj.stBGAdjCh[uchChannelIndex].uchUpperlevel = 3;//¸ù¾İ±³¾°¹âµ÷Õû´¥·¢ÉÏÏŞÎª3
+                        g_stAutoLedConfig.stAutoLedChannel[uchChannelIndex].uchGainLimitThr = uchGainArr[uchChannelIndex];//é™åˆ¶Gain
+                        g_stBGAdj.stBGAdjCh[uchChannelIndex].uchBGLevelCnt = 0;//è®¡æ•°å™¨æ¸…0
+                        g_stBGAdj.stBGAdjCh[uchChannelIndex].uchUpperlevel = 3;//æ ¹æ®èƒŒæ™¯å…‰è°ƒæ•´è§¦å‘ä¸Šé™ä¸º3
                     }
                 }
-                g_stBGAdj.stBGAdjCh[uchChannelIndex].uchLastBGLevel = HBD_AUTOLED_BG_HIGHLIGHT;//µ±Ç°µÈ¼¶
+                g_stBGAdj.stBGAdjCh[uchChannelIndex].uchLastBGLevel = HBD_AUTOLED_BG_HIGHLIGHT;//å½“å‰ç­‰çº§
             }
-            else if (BGAvg > g_stAutoLedConfig.uchBgWeakStrongLightThr && BGAvg < g_stAutoLedConfig.uchBgStrongLightThr && BGMin >= g_stAutoLedConfig.uchBgWeakStrongLightThr)//ÈõÇ¿¹â
+            else if (BGAvg > g_stAutoLedConfig.uchBgWeakStrongLightThr && BGAvg < g_stAutoLedConfig.uchBgStrongLightThr && BGMin >= g_stAutoLedConfig.uchBgWeakStrongLightThr)//å¼±å¼ºå…‰
             {//BG4-5     Max:49151
                 g_unIdealTargetValueArr[uchChannelIndex] = 39000;//BG 4-5,Max:49151 80% -->39000
 
@@ -3189,8 +3216,8 @@ static GU8 HBD_AutoLEDBGProcess(GU8 uchGainArr[2], GU32 unRawdataAvgArr[2])
                     if (uchGainArr[uchChannelIndex] >= 1)
                     {
                         uchGainArr[uchChannelIndex] = uchGainArr[uchChannelIndex] - 1;
-                        g_stAutoLedConfig.stAutoLedChannel[uchChannelIndex].uchGainLimitThr = uchGainArr[uchChannelIndex]; //ÏŞÖÆGain
-                        g_uchAutoLedLastFlag |= 1 << uchChannelIndex; //µ÷¹â±ê¼Ç
+                        g_stAutoLedConfig.stAutoLedChannel[uchChannelIndex].uchGainLimitThr = uchGainArr[uchChannelIndex]; //é™åˆ¶Gain
+                        g_uchAutoLedLastFlag |= 1 << uchChannelIndex; //è°ƒå…‰æ ‡è®°
                         uchRes = 1;
                     }
                     else{
@@ -3199,16 +3226,16 @@ static GU8 HBD_AutoLEDBGProcess(GU8 uchGainArr[2], GU32 unRawdataAvgArr[2])
                     g_stBGAdj.stBGAdjCh[uchChannelIndex].uchBGLevelCnt = 0;
                 }
                 else{
-                    //ÉÏÒ»´ÎÎªÈõÇ¿¹â ¼ÆÊıÆ÷Ôö¼Ó ·ñÔòÇå0
+                    //ä¸Šä¸€æ¬¡ä¸ºå¼±å¼ºå…‰ è®¡æ•°å™¨å¢åŠ  å¦åˆ™æ¸…0
                     (HBD_AUTOLED_BG_WEAKLIGHT == g_stBGAdj.stBGAdjCh[uchChannelIndex].uchLastBGLevel) ? \
                     (g_stBGAdj.stBGAdjCh[uchChannelIndex].uchBGLevelCnt += g_stSampleInfo.unSampleFifoDuration) : \
                         (g_stBGAdj.stBGAdjCh[uchChannelIndex].uchBGLevelCnt = g_stSampleInfo.unSampleFifoDuration);
-                    //ÖÜÆÚÅĞ¶Ï
+                    //å‘¨æœŸåˆ¤æ–­
                     if (g_stBGAdj.stBGAdjCh[uchChannelIndex].uchBGLevelCnt / (g_stBGAdj.uchBGReduceGainDuration * 1000))/* 3s*/
                     {
                         g_stAutoLedConfig.stAutoLedChannel[uchChannelIndex].uchGainLimitThr = uchGainArr[uchChannelIndex];
                         g_stBGAdj.stBGAdjCh[uchChannelIndex].uchBGLevelCnt = 0;
-                        g_stBGAdj.stBGAdjCh[uchChannelIndex].uchUpperlevel = 2;//¸ù¾İ±³¾°¹âµ÷Õû´¥·¢ÉÏÏŞÎª2
+                        g_stBGAdj.stBGAdjCh[uchChannelIndex].uchUpperlevel = 2;//æ ¹æ®èƒŒæ™¯å…‰è°ƒæ•´è§¦å‘ä¸Šé™ä¸º2
                     }
                 }
                 g_stBGAdj.stBGAdjCh[uchChannelIndex].uchLastBGLevel = HBD_AUTOLED_BG_WEAKLIGHT;
@@ -3237,7 +3264,7 @@ static GU8 HBD_AutoLEDBGProcess(GU8 uchGainArr[2], GU32 unRawdataAvgArr[2])
                 {
                     g_stAutoLedConfig.stAutoLedChannel[uchChannelIndex].uchGainLimitThr = uchGainArr[uchChannelIndex];
                     g_stBGAdj.stBGAdjCh[uchChannelIndex].uchBGLevelCnt = 0;
-                    g_stBGAdj.stBGAdjCh[uchChannelIndex].uchUpperlevel = 1;//¸ù¾İ±³¾°¹âµ÷Õû´¥·¢ÉÏÏŞÎª1
+                    g_stBGAdj.stBGAdjCh[uchChannelIndex].uchUpperlevel = 1;//æ ¹æ®èƒŒæ™¯å…‰è°ƒæ•´è§¦å‘ä¸Šé™ä¸º1
                 }
                 g_stBGAdj.stBGAdjCh[uchChannelIndex].uchLastBGLevel = HBD_AUTOLED_BG_LEVEL4;
             }
@@ -3265,7 +3292,7 @@ static GU8 HBD_AutoLEDBGProcess(GU8 uchGainArr[2], GU32 unRawdataAvgArr[2])
                 {
                     g_stAutoLedConfig.stAutoLedChannel[uchChannelIndex].uchGainLimitThr = uchGainArr[uchChannelIndex];
                     g_stBGAdj.stBGAdjCh[uchChannelIndex].uchBGLevelCnt = 0;
-                    g_stBGAdj.stBGAdjCh[uchChannelIndex].uchUpperlevel = 0;//¸ù¾İ±³¾°¹âµ÷Õû´¥·¢ÉÏÏŞÎª0
+                    g_stBGAdj.stBGAdjCh[uchChannelIndex].uchUpperlevel = 0;//æ ¹æ®èƒŒæ™¯å…‰è°ƒæ•´è§¦å‘ä¸Šé™ä¸º0
                 }
                 g_stBGAdj.stBGAdjCh[uchChannelIndex].uchLastBGLevel = HBD_AUTOLED_BG_LEVEL34;
             }
@@ -3296,7 +3323,7 @@ static GU8 HBD_AutoLEDBGProcess(GU8 uchGainArr[2], GU32 unRawdataAvgArr[2])
                         ++g_stAutoLedConfig.stAutoLedChannel[uchChannelIndex].uchGainLimitThr;
                     }
                     g_stBGAdj.stBGAdjCh[uchChannelIndex].uchBGLevelCnt = 0;
-                    g_stBGAdj.stBGAdjCh[uchChannelIndex].uchUpperlevel = 0;//¸ù¾İ±³¾°¹âµ÷Õû´¥·¢ÉÏÏŞÎª0
+                    g_stBGAdj.stBGAdjCh[uchChannelIndex].uchUpperlevel = 0;//æ ¹æ®èƒŒæ™¯å…‰è°ƒæ•´è§¦å‘ä¸Šé™ä¸º0
                 }
                 g_stBGAdj.stBGAdjCh[uchChannelIndex].uchLastBGLevel = HBD_AUTOLED_BG_NORMAL;
             }
@@ -3320,7 +3347,7 @@ static GU8 HBD_AutoLEDBGProcess(GU8 uchGainArr[2], GU32 unRawdataAvgArr[2])
 ******************************************************************/
 //GU8 HBD_AutoLedMotionLevelDetection(void)
 //{
-//    //ACCĞÅÏ¢»ñÈ¡
+//    //ACCä¿¡æ¯è·å–
 //    GU16 uACCAvg = (GU16)g_stAutoLedAccInfo.fAvg;
 //    GU16 uACCStd = (GU16)g_stAutoLedAccInfo.fStd;
 //    GU16 uACCMin = (GU16)g_stAutoLedAccInfo.uMin;
@@ -3328,25 +3355,25 @@ static GU8 HBD_AutoLEDBGProcess(GU8 uchGainArr[2], GU32 unRawdataAvgArr[2])
 //    GU16 uACCDiff = uACCMax - uACCMin;
 //    GU8 uchMotionLevel = 0;
 
-//    if (uACCStd <= g_stMotionThold.uDailyACCStdThr)//ÈÕ³£
+//    if (uACCStd <= g_stMotionThold.uDailyACCStdThr)//æ—¥å¸¸
 //    {
 //        if (uACCDiff < g_stMotionThold.uRestACCDiffThr){
-//            uchMotionLevel = HBD_AUTOLED_MOTION_LEVEL_0; /* ¾²Ï¢*/
+//            uchMotionLevel = HBD_AUTOLED_MOTION_LEVEL_0; /* é™æ¯*/
 //        }
 //        else{
-//            uchMotionLevel = HBD_AUTOLED_MOTION_LEVEL_1; /* ÈÕ³£*/
+//            uchMotionLevel = HBD_AUTOLED_MOTION_LEVEL_1; /* æ—¥å¸¸*/
 //        }
 //    }
 //    else if (g_stMotionThold.uDailyACCStdThr < uACCStd && g_stMotionThold.uWalkACCStdThr >= uACCStd){
-//        uchMotionLevel = HBD_AUTOLED_MOTION_LEVEL_2;//²½ĞĞ
+//        uchMotionLevel = HBD_AUTOLED_MOTION_LEVEL_2;//æ­¥è¡Œ
 //    }
 //    else{
-//        uchMotionLevel = HBD_AUTOLED_MOTION_LEVEL_4;//ÔË¶¯³¡¾°
+//        uchMotionLevel = HBD_AUTOLED_MOTION_LEVEL_4;//è¿åŠ¨åœºæ™¯
 //    }
 
 //    if (uchMotionLevel == HBD_AUTOLED_MOTION_LEVEL_2)
 //    {
-//        if (uACCAvg >= g_stMotionThold.uTrotACCAvgThr) /* ¿ì×ß */
+//        if (uACCAvg >= g_stMotionThold.uTrotACCAvgThr) /* å¿«èµ° */
 //        {
 //            uchMotionLevel = HBD_AUTOLED_MOTION_LEVEL_3;
 //        }
@@ -3354,12 +3381,12 @@ static GU8 HBD_AutoLEDBGProcess(GU8 uchGainArr[2], GU32 unRawdataAvgArr[2])
 
 //    if (uchMotionLevel == HBD_AUTOLED_MOTION_LEVEL_4)
 //    {
-//        if (uACCMax >= g_stMotionThold.uDashACCMaxThr) /* ¾çÁÒÔË¶¯ */
+//        if (uACCMax >= g_stMotionThold.uDashACCMaxThr) /* å‰§çƒˆè¿åŠ¨ */
 //        {
 //            uchMotionLevel = HBD_AUTOLED_MOTION_LEVEL_5;
 //        }
 //    }
-//    return uchMotionLevel;//ÔË¶¯µÈ¼¶·µ»Ø
+//    return uchMotionLevel;//è¿åŠ¨ç­‰çº§è¿”å›
 //}
 
 /****************************************************************
@@ -3370,20 +3397,20 @@ static GU8 HBD_AutoLEDBGProcess(GU8 uchGainArr[2], GU32 unRawdataAvgArr[2])
 
 static void HBD_AutoLedSatProcess( )
 {
-    /*ÎŞÊı¾İ±¥ºÍÀíÏëÄ¿±êÖµÌáµ÷¹â´¥·¢ãĞÖµ¸ß*/
-    /*  Êı¾İ±¥ºÍÀíÏëÄ¿±êÖµÌáµ÷¹â´¥·¢ãĞÖµ½µµÍ*/
+    /*æ— æ•°æ®é¥±å’Œç†æƒ³ç›®æ ‡å€¼æè°ƒå…‰è§¦å‘é˜ˆå€¼é«˜*/
+    /*  æ•°æ®é¥±å’Œç†æƒ³ç›®æ ‡å€¼æè°ƒå…‰è§¦å‘é˜ˆå€¼é™ä½*/
     GU8 uchChannelIndex = 0;
-    GU8 n = 0;//ÏµÊı
+    GU8 n = 0;//ç³»æ•°
     GU32 unTargetTemp = 0;
 
     for (uchChannelIndex = 0; uchChannelIndex < g_uchNeedReadRawdataCount; uchChannelIndex++)
     {
-       if (g_stPpgSatInfo.Sat_flag & (1<<uchChannelIndex)) // Èç¹ûÊı¾İ±¥ºÍ
+       if (g_stPpgSatInfo.Sat_flag & (1<<uchChannelIndex)) // å¦‚æœæ•°æ®é¥±å’Œ
        {
-            n = 2;  // ½«¼õĞ¡ÀíÏëÄ¿±êµ÷¹â´¥·¢ãĞÖµ
+            n = 2;  // å°†å‡å°ç†æƒ³ç›®æ ‡è°ƒå…‰è§¦å‘é˜ˆå€¼
        }
        else
-       {//¼ÆÊıÆ÷¹é0²¢ÀÛ¼ÓÒ»¸öfifoÊ±¼ä³¤¶È
+       {//è®¡æ•°å™¨å½’0å¹¶ç´¯åŠ ä¸€ä¸ªfifoæ—¶é—´é•¿åº¦
             n = 0;
        }
 
@@ -3427,18 +3454,18 @@ static GU8 HBD_AutoLedCalcTrigerFlag(void)
     GU32 Lower = 0;
     for (uchChannelIndex = 0; uchChannelIndex < g_uchNeedReadRawdataCount; uchChannelIndex++)
     {
-        Lower = g_stAutoLedConfig.stAutoLedChannel[uchChannelIndex].unTrigerLowerThr;//Íâ²¿ÅäÖÃ´¥·¢ÏÂÏŞ
+        Lower = g_stAutoLedConfig.stAutoLedChannel[uchChannelIndex].unTrigerLowerThr;//å¤–éƒ¨é…ç½®è§¦å‘ä¸‹é™
 
         if (g_stAutoLedConfig.stAutoLedChannel[uchChannelIndex].emAutoledEnable == HBD_FUNCTIONAL_STATE_ENABLE)
         {
-            //¿ªÆôµ÷¹â²Å¼ÆËã
-            if ((GU32)g_stTrigCalcInfo[uchChannelIndex].fAvg > g_PpgSatThr[uchChannelIndex])//´óÓÚÉÏÏŞ
+            //å¼€å¯è°ƒå…‰æ‰è®¡ç®—
+            if ((GU32)g_stTrigCalcInfo[uchChannelIndex].fAvg > g_PpgSatThr[uchChannelIndex])//å¤§äºä¸Šé™
             {
-                uchRet |= (1 << uchChannelIndex);//ÉÏ´¥·¢
+                uchRet |= (1 << uchChannelIndex);//ä¸Šè§¦å‘
             }
-            else if ((GU32)g_stTrigCalcInfo[uchChannelIndex].fAvg < Lower)//Ğ¡ÓÚÏÂÏŞ
+            else if ((GU32)g_stTrigCalcInfo[uchChannelIndex].fAvg < Lower)//å°äºä¸‹é™
             {
-                uchRet |= (1 << uchChannelIndex);//ÏÂ´¥·¢
+                uchRet |= (1 << uchChannelIndex);//ä¸‹è§¦å‘
             }
         }
         // LOGY("[AutoLED][TRG_R_F][CH%d]: FLAG:%d AVG:%05d MIN:%05d MAX:%05d THR:%05d", uchChannelIndex, uchRet >> uchChannelIndex & 0x1, \
@@ -3465,23 +3492,23 @@ static GU8 HBD_AutoLedRawdataAvgDeal(GU32 uRawdataAvg[2])
         }
 
         /* Average*/
-        //Êı¾İ±¥ºÍÊ±(±¥ºÍ±êÖ¾Ò»µ©ÖÃÎ»5ÃëÇĞ»»Ò»´Î×´Ì¬)£¬¿¼ÂÇ´óÖµ¶Ô½á¹ûµÄÓ°Ïì  µ÷¹â¾ùÖµ¼ÆËãÆ«´ó  Ò»µ©Êı¾İ±¥ºÍ¾ÍÉúĞ§(ÓÅÏÈÏŞÖÆÊı¾İ±¥ºÍ)
+        //æ•°æ®é¥±å’Œæ—¶(é¥±å’Œæ ‡å¿—ä¸€æ—¦ç½®ä½5ç§’åˆ‡æ¢ä¸€æ¬¡çŠ¶æ€)ï¼Œè€ƒè™‘å¤§å€¼å¯¹ç»“æœçš„å½±å“  è°ƒå…‰å‡å€¼è®¡ç®—åå¤§  ä¸€æ—¦æ•°æ®é¥±å’Œå°±ç”Ÿæ•ˆ(ä¼˜å…ˆé™åˆ¶æ•°æ®é¥±å’Œ)
         if ( (g_stPpgSatInfo.Sat_flag & (1<<i))  /* && (g_stTrigCalcInfo[i].uMax >  (GU32)(0.9f*g_PpgSatThr[i])) */ )
         {
             // LOGY("[AutoLED][Buf_AVG][CH%d]: 1 \n", i);
             uRawdataAvg[i] = (GU32)(g_stTrigCalcInfo[i].uMin * g_CalcAvgRatioInMotion.fMinRatio + g_stTrigCalcInfo[i].uMax * g_CalcAvgRatioInMotion.fMaxRatio);
-                   //ÏŞÖÆµ÷¹â¾ùÖµ¼ÆËã¹ı´ó
+                   //é™åˆ¶è°ƒå…‰å‡å€¼è®¡ç®—è¿‡å¤§
              uRawdataAvg[i] = ( uRawdataAvg[i] > (GU32)(3*(GU32)g_stTrigCalcInfo[i].fAvg)) ? (GU32)(3*(GU32)g_stTrigCalcInfo[i].fAvg) : uRawdataAvg[i];
         }
-        //Êı¾İÃ»±¥ºÍÊ±
+        //æ•°æ®æ²¡é¥±å’Œæ—¶
         else
         {
             // LOGY("[AutoLED][Buf_AVG][CH%d]: 2 \n", i);
-            //³ı0±£»¤
+            //é™¤0ä¿æŠ¤
             if (g_stTrigCalcInfo[i].uDif == 0) {
                 uRawdataAvg[i] = (GU32)g_stTrigCalcInfo[i].fAvg;
             }
-            //Õı³£·ÖÖ§
+            //æ­£å¸¸åˆ†æ”¯
             else{
                 //Average = (Max-Avg)/Dif*MIN + (MIN-Avg)/Dif*MAX
                 uRawdataAvg[i] = (GU32)((g_stTrigCalcInfo[i].uMax - (GU32)g_stTrigCalcInfo[i].fAvg)*g_stTrigCalcInfo[i].uMin / g_stTrigCalcInfo[i].uDif + \
@@ -3505,24 +3532,24 @@ static GU8 HBD_AutoLedWriteRegConfirm(GU8 uchCalcGain, GU8 uchCalCurrent, GU8 uc
 {
     GF32 fratio = 0.0f;
 
-    if (uchCurrentArr[uchchannel] != 0)//¼ÆËãÌáÉırawdata»¹ÊÇ½µµÍrawdata
-    {//Gain*µçÁ÷ ÅĞ¶ÏÏòÉÏµ÷½Ú»¹ÊÇÏòÏÂµ÷½Ú Ö®Ç°Ò»¶ÎÊ±¼äÓĞ´¥·¢ÉÏÏŞ ²»ÄÜÉı
+    if (uchCurrentArr[uchchannel] != 0)//è®¡ç®—æå‡rawdataè¿˜æ˜¯é™ä½rawdata
+    {//Gain*ç”µæµ åˆ¤æ–­å‘ä¸Šè°ƒèŠ‚è¿˜æ˜¯å‘ä¸‹è°ƒèŠ‚ ä¹‹å‰ä¸€æ®µæ—¶é—´æœ‰è§¦å‘ä¸Šé™ ä¸èƒ½å‡
         fratio = 1.0f * g_usGainArrEnum[uchCalcGain] * uchCalCurrent / (g_usGainArrEnum[uchGainArr[uchchannel]] * uchCurrentArr[uchchannel]);
     }
 
-    //ÊÇ·ñ¿ÉÒÔÌáÉı
+    //æ˜¯å¦å¯ä»¥æå‡
     // if ((GU32)g_stTrigCalcInfo[uchchannel].fAvg > (g_unIdealTargetValueArr[uchchannel] / (1-g_fTriggerIdealAdjustRatio[uchchannel])) && fratio >= 1.0f)
     if ((g_stTrigCalcInfo[uchchannel].fAvg > ((GF32)g_unIdealTargetValueArr[uchchannel] / 0.9f)) && fratio >= 1.0f)
     {
         g_stAutoledWrtRegCheck.unWrtRegNormDuration[uchchannel] = 0;
     }
-    //ÊÇ·ñ¿ÉÒÔ½µµÍ µÍÓÚÏÂÏŞ ²»ÄÜ½µ
+    //æ˜¯å¦å¯ä»¥é™ä½ ä½äºä¸‹é™ ä¸èƒ½é™
     else if ((GU32)g_stTrigCalcInfo[uchchannel].fAvg < (g_stAutoLedConfig.stAutoLedChannel[uchchannel].unCompatibleTakeoffThr / 0.9) && fratio < 1.0f)
     {
         g_stAutoledWrtRegCheck.unWrtRegNormDuration[uchchannel] = 0;
     }
 
-     // Êı¾İ±¥ºÍÇÒ¾ùÖµ´óÓÚÏÂÏŞÊ±£¬²»ÔÊĞíÉÏµ÷
+     // æ•°æ®é¥±å’Œä¸”å‡å€¼å¤§äºä¸‹é™æ—¶ï¼Œä¸å…è®¸ä¸Šè°ƒ
     if((g_stPpgSatInfo.Sat_flag & (1<<uchchannel))&& ((GU32)g_stTrigCalcInfo[uchchannel].fAvg > g_stAutoLedConfig.stAutoLedChannel[uchchannel].unTargetLowerThr))
     {
         if(g_usGainArrEnum[uchGainArr[uchchannel]]*uchCurrentArr[uchchannel] < uchCalCurrent*g_usGainArrEnum[uchCalcGain])
@@ -3537,7 +3564,7 @@ static GU8 HBD_AutoLedWriteRegConfirm(GU8 uchCalcGain, GU8 uchCalCurrent, GU8 uc
     //  (int)g_stTrigCalcInfo[uchchannel].fAvg, (int)g_unIdealTargetValueArr[uchchannel],\
     //  gfMotionTrigRatio[uchchannel],fratio);
 
-    return (GU8)(g_stAutoledWrtRegCheck.unWrtRegNormDuration[uchchannel] / g_stAutoledWrtRegCheck.unWrtRegThres);//·µ»Ø±ê¼Ç
+    return (GU8)(g_stAutoledWrtRegCheck.unWrtRegNormDuration[uchchannel] / g_stAutoledWrtRegCheck.unWrtRegThres);//è¿”å›æ ‡è®°
 }
 
 #define AutoLEDABSF(x) ((x)>=0?(x):-(x))
@@ -3552,14 +3579,14 @@ static GU8 HBD_AutoLedWriteRegConfirm(GU8 uchCalcGain, GU8 uchCalCurrent, GU8 uc
 static GU8 HBD_AutoLedAdjustRawdataToIdeal(GU8 uchFlag, GU8 uchGainArr[2], GU8 uchGainShiftArr[2], GU16 usLastGainMsk,
     GU8 uchCurrentArr[2], GU8 uchCurrentShift[2], GU32 unLastCurrentMsk, GU32 unRawdataAvgArr[2])
 {
-    GU8 uchTrigFlg = 0;;//´¥·¢±ÈÀı
-    GU8 uchChannelIndex = 0;//Í¨µÀË÷Òı
-    GU16 uchCalcCurrent = 0;//¼ÆËãµçÁ÷
-    GU8 uchCalcGain = 0;//¼ÆËãGain
-    GU8 uchCurrentLimit = 0;//¹¦ºÄÏŞÖÆ
-    GU8 uchGainLimit = 0;//gainÏŞÖÆ(ÒòÎª±³¾°¹â
-    GU8 uchAdjFlag = 0;//µ÷½Ú±ê¼Ç
-    GU8 uchtrigger = 0;//´¥·¢ÀíÏëÄ¿±êÖµµ÷½Ú±ê¼Ç
+    GU8 uchTrigFlg = 0;;//è§¦å‘æ¯”ä¾‹
+    GU8 uchChannelIndex = 0;//é€šé“ç´¢å¼•
+    GU16 uchCalcCurrent = 0;//è®¡ç®—ç”µæµ
+    GU8 uchCalcGain = 0;//è®¡ç®—Gain
+    GU8 uchCurrentLimit = 0;//åŠŸè€—é™åˆ¶
+    GU8 uchGainLimit = 0;//gainé™åˆ¶(å› ä¸ºèƒŒæ™¯å…‰
+    GU8 uchAdjFlag = 0;//è°ƒèŠ‚æ ‡è®°
+    GU8 uchtrigger = 0;//è§¦å‘ç†æƒ³ç›®æ ‡å€¼è°ƒèŠ‚æ ‡è®°
 
     for (uchChannelIndex = 0; uchChannelIndex < g_uchNeedReadRawdataCount; uchChannelIndex++)
     {
@@ -3568,7 +3595,7 @@ static GU8 HBD_AutoLedAdjustRawdataToIdeal(GU8 uchFlag, GU8 uchGainArr[2], GU8 u
         {
             if (g_stAutoLedConfig.stAutoLedChannel[uchChannelIndex].emAutoledEnable == HBD_FUNCTIONAL_STATE_ENABLE)
             {
-                //ÏŞÖÆµ÷¹â´¥·¢ÏÂãĞÖµ²»ÄÜÌ«´ó
+                //é™åˆ¶è°ƒå…‰è§¦å‘ä¸‹é˜ˆå€¼ä¸èƒ½å¤ªå¤§
                 g_unIdealTargetTrigArr[uchChannelIndex] = (g_unIdealTargetTrigArr[uchChannelIndex] > 0.8f *g_unIdealTargetValueArr[uchChannelIndex]) ? \
                     0.8f *g_unIdealTargetValueArr[uchChannelIndex]  : g_unIdealTargetTrigArr[uchChannelIndex];
                 uchCurrentLimit = g_stAutoLedConfig.stAutoLedChannel[uchChannelIndex].uchCurrentLimit; //Limit Current Max
@@ -3576,11 +3603,11 @@ static GU8 HBD_AutoLedAdjustRawdataToIdeal(GU8 uchFlag, GU8 uchGainArr[2], GU8 u
                 //fRatio = AutoLEDABSF((unRawdataAvgArr[uchChannelIndex] * 1.0f / g_unIdealTargetValueArr[uchChannelIndex]) - 1);
                 uchTrigFlg = (unRawdataAvgArr[uchChannelIndex] > g_unIdealTargetTrigArr[uchChannelIndex]) ? 0 : 1;
 
-                //if (fRatio > gfMotionTrigRatio[uchChannelIndex]) /* ´óÓÚÀíÏëÄ¿±êÖµµ÷½Ú±ÈÀı(´Ë´¦µş¼ÓÁËÔË¶¯µÄÓ°Ïì,ËùÒÔÎªMotion) */
+                //if (fRatio > gfMotionTrigRatio[uchChannelIndex]) /* å¤§äºç†æƒ³ç›®æ ‡å€¼è°ƒèŠ‚æ¯”ä¾‹(æ­¤å¤„å åŠ äº†è¿åŠ¨çš„å½±å“,æ‰€ä»¥ä¸ºMotion) */
                 if (uchTrigFlg)
                 {
-                    /* ¼ÆËãÊÇ·ñ½øÈëµ÷½Ú */
-                    if (!g_stIdealAdjust.stIdealAdjustCh[uchChannelIndex].uchFirstTrigger) /* ÊÇ·ñµÚÒ»´Î´¥·¢*/
+                    /* è®¡ç®—æ˜¯å¦è¿›å…¥è°ƒèŠ‚ */
+                    if (!g_stIdealAdjust.stIdealAdjustCh[uchChannelIndex].uchFirstTrigger) /* æ˜¯å¦ç¬¬ä¸€æ¬¡è§¦å‘*/
                     {
                         uchtrigger = 1;
                         g_stIdealAdjust.stIdealAdjustCh[uchChannelIndex].uchLastIdealTrigger = 1;
@@ -3588,10 +3615,10 @@ static GU8 HBD_AutoLedAdjustRawdataToIdeal(GU8 uchFlag, GU8 uchGainArr[2], GU8 u
                     }
                     else
                     {
-                        if (g_stIdealAdjust.stIdealAdjustCh[uchChannelIndex].uchLastIdealTrigger) /* ÀÛ¼Óµ½ÖÜÆÚÖµ*/
+                        if (g_stIdealAdjust.stIdealAdjustCh[uchChannelIndex].uchLastIdealTrigger) /* ç´¯åŠ åˆ°å‘¨æœŸå€¼*/
                         {
                             g_stIdealAdjust.stIdealAdjustCh[uchChannelIndex].uchTriggerCnt += g_stSampleInfo.unSampleFifoDuration;
-                            uchtrigger = (GU8)(g_stIdealAdjust.stIdealAdjustCh[uchChannelIndex].uchTriggerCnt / g_stIdealAdjust.uchTriggerDuration / 1000);//ÊÇ·ñ´¥·¢±ê¼Ç
+                            uchtrigger = (GU8)(g_stIdealAdjust.stIdealAdjustCh[uchChannelIndex].uchTriggerCnt / g_stIdealAdjust.uchTriggerDuration / 1000);//æ˜¯å¦è§¦å‘æ ‡è®°
                         }
                         else{
                             uchtrigger = 0;
@@ -3604,14 +3631,14 @@ static GU8 HBD_AutoLedAdjustRawdataToIdeal(GU8 uchFlag, GU8 uchGainArr[2], GU8 u
                         g_stIdealAdjust.stIdealAdjustCh[uchChannelIndex].uchTriggerCnt = 0; /* Enter adjusting, Counter set to zero */
                         if (uchGainArr[uchChannelIndex] >= uchGainLimit || uchCurrentArr[uchChannelIndex] >= uchCurrentLimit)
                         {
-                            //´ËÊ±ÎªDCÁ¿¹ıµÍÊ±µÄ¼æÈİ·ÖÖ§£¬²»½øĞĞÀíÏëÄ¿±êÖµ´¦Àí
+                            //æ­¤æ—¶ä¸ºDCé‡è¿‡ä½æ—¶çš„å…¼å®¹åˆ†æ”¯ï¼Œä¸è¿›è¡Œç†æƒ³ç›®æ ‡å€¼å¤„ç†
                         }
                         else {
                             if ((unRawdataAvgArr[uchChannelIndex] != 0) && (uchCurrentArr[uchChannelIndex] != 0))
                             {
-                                //°´Êı¾İ±ÈÀı¼ÆËãµçÁ÷
+                                //æŒ‰æ•°æ®æ¯”ä¾‹è®¡ç®—ç”µæµ
                                 uchCalcCurrent = (GU16)(uchCurrentArr[uchChannelIndex] * g_unIdealTargetValueArr[uchChannelIndex] * 1.0f / unRawdataAvgArr[uchChannelIndex]);//fixed 210307//div0
-                                if (!uchCalcCurrent)//±ÜÃâËã³ö0
+                                if (!uchCalcCurrent)//é¿å…ç®—å‡º0
                                 {
                                     uchCalcCurrent = (GU16)(uchCurrentArr[uchChannelIndex]);//fixed 210324 !!!CalCurrent will not equals zero
                                 }
@@ -3622,13 +3649,13 @@ static GU8 HBD_AutoLedAdjustRawdataToIdeal(GU8 uchFlag, GU8 uchGainArr[2], GU8 u
                             uchCalcGain = uchGainArr[uchChannelIndex];
                             /* CalcCurrent bigger than limit, Gain++ */
                             if (uchCalcCurrent > uchCurrentLimit)//fixed 21.01.06//fixed 210308
-                            {//´óÓÚ¹¦ºÄÏŞÖÆ£¬Ôö´óGain£¬ÖØĞÂ¼ÆËãµçÁ÷
+                            {//å¤§äºåŠŸè€—é™åˆ¶ï¼Œå¢å¤§Gainï¼Œé‡æ–°è®¡ç®—ç”µæµ
                                 if (uchCalcGain < uchGainLimit)
                                 {
                                     ++uchCalcGain;
                                     if (unRawdataAvgArr[uchChannelIndex] != 0)
                                     {
-                                        //Gain++ºó¼ÆËãµçÁ÷
+                                        //Gain++åè®¡ç®—ç”µæµ
                                         uchCalcCurrent = (GU16)(((GF32)g_unIdealTargetValueArr[uchChannelIndex] * g_usGainArrEnum[uchCalcGain] * uchCurrentArr[uchChannelIndex])\
                                             / (g_usGainArrEnum[uchCalcGain + 1] * unRawdataAvgArr[uchChannelIndex]));  //Gain++, calc current
                                         if(uchCalcCurrent > uchCurrentLimit)
@@ -3643,7 +3670,7 @@ static GU8 HBD_AutoLedAdjustRawdataToIdeal(GU8 uchFlag, GU8 uchGainArr[2], GU8 u
                                 }
                                 else
                                 {
-                                    uchCalcCurrent = uchCurrentLimit; //µçÁ÷×î´óÎª¹¦ºÄÏŞÖÆÖµ
+                                    uchCalcCurrent = uchCurrentLimit; //ç”µæµæœ€å¤§ä¸ºåŠŸè€—é™åˆ¶å€¼
                                 }
                             }
                             if (uchCalcGain != uchGainArr[uchChannelIndex] || uchCalcCurrent != uchCurrentArr[uchChannelIndex])
@@ -3653,7 +3680,7 @@ static GU8 HBD_AutoLedAdjustRawdataToIdeal(GU8 uchFlag, GU8 uchGainArr[2], GU8 u
                                     uchGainArr[uchChannelIndex] = uchCalcGain;
                                     uchCurrentArr[uchChannelIndex] = (GU8)uchCalcCurrent;
                                     uchAdjFlag = 1;
-                                    g_uchAutoLedLastFlag |= 1 << uchChannelIndex; /* È«¾Öµ÷¹â±ê¼Ç*/
+                                    g_uchAutoLedLastFlag |= 1 << uchChannelIndex; /* å…¨å±€è°ƒå…‰æ ‡è®°*/
                                 }
                             }
                             // Gain Current is ok!
@@ -3664,7 +3691,7 @@ static GU8 HBD_AutoLedAdjustRawdataToIdeal(GU8 uchFlag, GU8 uchGainArr[2], GU8 u
                 {
                     g_stIdealAdjust.stIdealAdjustCh[uchChannelIndex].uchLastIdealTrigger = 0;
                     g_stIdealAdjust.stIdealAdjustCh[uchChannelIndex].uchTriggerCnt = 0;
-                    //¸´Î»ºóµÚÒ»´ÎÃ»´¥·¢ÀíÏëÖµµ÷½ÚÔò²»ÔÙ½øĞĞµÚÒ»´Î´¥·¢ÅĞ¶Ï£¬±ÜÃâ³õÆÚÆµ·±µ÷¹âÓ°Ïì³öÖµÊ±¼ä
+                    //å¤ä½åç¬¬ä¸€æ¬¡æ²¡è§¦å‘ç†æƒ³å€¼è°ƒèŠ‚åˆ™ä¸å†è¿›è¡Œç¬¬ä¸€æ¬¡è§¦å‘åˆ¤æ–­ï¼Œé¿å…åˆæœŸé¢‘ç¹è°ƒå…‰å½±å“å‡ºå€¼æ—¶é—´
                     if (!g_stIdealAdjust.stIdealAdjustCh[uchChannelIndex].uchFirstTrigger)
                     {
                         g_stIdealAdjust.stIdealAdjustCh[uchChannelIndex].uchFirstTrigger = 1; //Only for first ideal adj, after start sample,21.01.06
@@ -3688,12 +3715,12 @@ static float HBD_AutoLedfIpdSaturation(GU8 uchGain, GU8 uchCurrent, GU32 unRawda
 {
     float fSatRatio = 0.0f;
     float fIpd = 0.0f;
-    fSatRatio = ((float)unRawdataAvgArr - 60000.0f) / 60000.0f;//Ö»¿¼ÂÇ¹ı±¥ºÍµÄÇé¿ö
-    fSatRatio = fSatRatio > 0.0f ? 1 + uchAmp * fSatRatio : 1.0f; // Ö»Õë¶Ô¹ı±¥ºÍ£¬ÆäËüÇé¿ö²»¿¼ÂÇ
+    fSatRatio = ((float)unRawdataAvgArr - 60000.0f) / 60000.0f;//åªè€ƒè™‘è¿‡é¥±å’Œçš„æƒ…å†µ
+    fSatRatio = fSatRatio > 0.0f ? 1 + uchAmp * fSatRatio : 1.0f; // åªé’ˆå¯¹è¿‡é¥±å’Œï¼Œå…¶å®ƒæƒ…å†µä¸è€ƒè™‘
     if ((uchCurrent != 0) && (unRawdataAvgArr != 0))
     {
         //Ipd = Raw/(Gain*Current)
-        fIpd = (GF32)unRawdataAvgArr / g_usGainArrEnum[uchGain] / uchCurrent * fSatRatio;//Ipd¼ÆËã
+        fIpd = (GF32)unRawdataAvgArr / g_usGainArrEnum[uchGain] / uchCurrent * fSatRatio;//Ipdè®¡ç®—
     }
     else
     {
@@ -3723,7 +3750,7 @@ static GU8 HBD_AutoLedDirectCalculate(GU8 uchchindex, GF32 fIpd, GU8 uchGain, GU
 
     if (fIpd != 0)
     {
-        usCalcCur = (GU16)(unidealtarget / fIpd / g_usGainArrEnum[uchGain]);//¼ÆËãµçÁ÷£¬×¢Òâ¸Ã´¦ÎªU16
+        usCalcCur = (GU16)(unidealtarget / fIpd / g_usGainArrEnum[uchGain]);//è®¡ç®—ç”µæµï¼Œæ³¨æ„è¯¥å¤„ä¸ºU16
     }
     else
     {
@@ -3757,12 +3784,12 @@ static GU8 HBD_AutoLedDirectCalculate(GU8 uchchindex, GF32 fIpd, GU8 uchGain, GU
 static GU8 HBD_AutoLedDirectCalculateJudge(GU8 uchChannelIndex, GF32 fIpd, GU8 *uchGain, GU8 uchcurrent, GU16 *usPrefCurrent, GU8 uchLimitCurrent, GU8 uchLimitGain, GU32 unidealtarget, GU32 unrawedataavg)
 {
     GU8 uchCalcFlag = 0;
-    GU8 uchCalcGain = *uchGain;//Áí¼ÆËãGain³õÖµÎªµ±Ç°¼Ä´æÆ÷µÄÖµ
+    GU8 uchCalcGain = *uchGain;//å¦è®¡ç®—Gainåˆå€¼ä¸ºå½“å‰å¯„å­˜å™¨çš„å€¼
     GU8 uchCompatibleModeFlag = HBD_AUTO_LED_COMPATIBLE_NONE;
     uchCalcFlag = HBD_AutoLedDirectCalculate(uchChannelIndex, fIpd, uchCalcGain, uchcurrent, usPrefCurrent, \
-        uchLimitCurrent, unidealtarget, unrawedataavg);//ÅĞ¶Ï½á¹û
+        uchLimitCurrent, unidealtarget, unrawedataavg);//åˆ¤æ–­ç»“æœ
     // LOGY("[AutoLED][DC_CALC][1st]: Flag:0x%x Target:%05d CurL:%d", uchCalcFlag, (int)unidealtarget, uchLimitCurrent);
-    while (uchCalcFlag)//µ±½á¹û²»Îª0 ¸ù¾İ½á¹ûÑ¡ÔñGain++ »òÕßGain-- ºóÖØĞÂ¼ÆËã
+    while (uchCalcFlag)//å½“ç»“æœä¸ä¸º0 æ ¹æ®ç»“æœé€‰æ‹©Gain++ æˆ–è€…Gain-- åé‡æ–°è®¡ç®—
     {
         // LOGY("[AutoLED] [Loop uchCalcFlagDC:0x0%x]", uchCalcFlag);
         switch (uchCalcFlag)
@@ -3811,7 +3838,7 @@ static GU8 HBD_AutoLedDirectCalculateJudge(GU8 uchChannelIndex, GF32 fIpd, GU8 *
 /****************************************************************
 * Description: soft autoled dichotomy calculate current
 * Input:
-* Return: uchRes£º 0-Ok 0xFF-Fail
+* Return: uchResï¼š 0-Ok 0xFF-Fail
 ******************************************************************/
 static GU8 HBD_AutoLedCompatibleMode(GU8 uchcmpflag, GU8 uchChannelIndex, GF32 fIpd, GU16 *usPrefCurrent, GU8 *usPrefGain, GU8 uchLimitCurrent, \
     GU8 uchLimitGain, GU32 uIdealRawdata, GU32 uRawdataAvg, GU32 lnTakeoff, GU8 uchGain, GU8 uchCur)
@@ -3819,7 +3846,7 @@ static GU8 HBD_AutoLedCompatibleMode(GU8 uchcmpflag, GU8 uchChannelIndex, GF32 f
     GU8 uchRes = 0;
     GU32 uCalcRawdata = 0;
     GU32 uUpperThrBasedBG = 0;
-    //ÔÚÇ¿¹âÏÂ£¬ĞŞ¸Ä´¥·¢ÉÏÏŞ
+    //åœ¨å¼ºå…‰ä¸‹ï¼Œä¿®æ”¹è§¦å‘ä¸Šé™
     if (HBD_AUTOLED_BG_LEVEL4 <= g_stBGAdj.stBGAdjCh[uchChannelIndex].uchLastBGLevel)
     {
         uUpperThrBasedBG = (GU32)(g_stAutoLedConfig.stAutoLedChannel[uchChannelIndex].unTargetUpperThr * 0.75);  //49618/65536
@@ -3844,33 +3871,33 @@ static GU8 HBD_AutoLedCompatibleMode(GU8 uchcmpflag, GU8 uchChannelIndex, GF32 f
             break;
 
         /* Gain:Limit clacCurrent:Limit, whether in [Compatibleline Ideal], Yes ->OK, No ->Fail*/
-        case HBD_AUTO_LED_COMPATIBLE_CASE2: //µçÁ÷´ïµ½ÏŞÖÆÖµ£¬GainµÈÓÚÏŞÖÆÖµ
-            if (uchCur == 0xFF && uchGain == uchLimitGain)//×î´óµçÁ÷ ×î´óÏŞÖÆGain
+        case HBD_AUTO_LED_COMPATIBLE_CASE2: //ç”µæµè¾¾åˆ°é™åˆ¶å€¼ï¼ŒGainç­‰äºé™åˆ¶å€¼
+            if (uchCur == 0xFF && uchGain == uchLimitGain)//æœ€å¤§ç”µæµ æœ€å¤§é™åˆ¶Gain
             {
                 if (uRawdataAvg < lnTakeoff)
                 {
-                    uchRes = HBD_AUTO_LED_COMPATIBLE_CASE2;//×î´óµçÁ÷×î´óÏŞÖÆGain,Ğ¡ÓÚÍÑÂäãĞÖµ Ê§°Ü
+                    uchRes = HBD_AUTO_LED_COMPATIBLE_CASE2;//æœ€å¤§ç”µæµæœ€å¤§é™åˆ¶Gain,å°äºè„±è½é˜ˆå€¼ å¤±è´¥
                 }
-                else{//ÉèÖÃÎª×î´óµçÁ÷×î´óÏŞÖÆGain
+                else{//è®¾ç½®ä¸ºæœ€å¤§ç”µæµæœ€å¤§é™åˆ¶Gain
                     *usPrefCurrent = 0xFF;
                     *usPrefGain = uchLimitGain;
                 }
             }
             else{
-                uCalcRawdata = (GU32)(fIpd * uchLimitCurrent * g_usGainArrEnum[uchLimitGain]);//ÓÃÏŞÖÆÖµ¼ÆËãrawdata
-                if (uCalcRawdata >= lnTakeoff)//´óÓÚÍÑÂäãĞÖµ£¬ok
+                uCalcRawdata = (GU32)(fIpd * uchLimitCurrent * g_usGainArrEnum[uchLimitGain]);//ç”¨é™åˆ¶å€¼è®¡ç®—rawdata
+                if (uCalcRawdata >= lnTakeoff)//å¤§äºè„±è½é˜ˆå€¼ï¼Œok
                 {
                     *usPrefCurrent = uchLimitCurrent;
                     *usPrefGain = uchLimitGain;
                 }
-                else{//Ğ¡ÓÚÍÑÂäãĞÖµ£¬ÌáÉıµçÁ÷¼æÈİ
+                else{//å°äºè„±è½é˜ˆå€¼ï¼Œæå‡ç”µæµå…¼å®¹
                     uCalcRawdata = (GU32)(fIpd * 0xFF * g_usGainArrEnum[uchLimitGain]);
                     if (uIdealRawdata < uCalcRawdata) /* find the Gain, make the rawdata >Idealtarget */
                     {
                         *usPrefCurrent = (GU16)(uIdealRawdata / fIpd / g_usGainArrEnum[uchLimitGain]);
                         *usPrefGain = uchLimitGain;
                     }
-                    else{//²»ÂÛÊÇ·ñ´óÓÚÍÑÂäãĞÖµ¶¼ÖØĞÂĞ´Èë×î´óÖµ£¬ÓÃÓÚ¶ş´ÎÈ·ÈÏ
+                    else{//ä¸è®ºæ˜¯å¦å¤§äºè„±è½é˜ˆå€¼éƒ½é‡æ–°å†™å…¥æœ€å¤§å€¼ï¼Œç”¨äºäºŒæ¬¡ç¡®è®¤
                         *usPrefCurrent = 0xFF;
                         *usPrefGain = uchLimitGain;
                     }
@@ -3910,7 +3937,7 @@ GU8 HBD_AutoLedCalcGainCurrent(GU8 uchFlag, GU8 uchGainArr[2], GU8 uchGainShiftA
     GU32 lnAutoLEDTakeoffThold = 0;
     g_uchAutoLedErrorFlag = 0;
 
-     /*µÚÒ»²½ÀíÏëÄ¿±êÖµ´¥·¢ÅĞ¶Ï µ±ÓĞÍ¨µÀ·Çrawdata´¥·¢ÉÏÏÂÏŞÊ±½øÈë */
+     /*ç¬¬ä¸€æ­¥ç†æƒ³ç›®æ ‡å€¼è§¦å‘åˆ¤æ–­ å½“æœ‰é€šé“érawdataè§¦å‘ä¸Šä¸‹é™æ—¶è¿›å…¥ */
     if (0x3 != uchFlag)
     {
         if (HBD_AutoLedAdjustRawdataToIdeal(uchFlag, uchGainArr, uchGainShiftArr, usLastGainMsk,
@@ -3922,14 +3949,14 @@ GU8 HBD_AutoLedCalcGainCurrent(GU8 uchFlag, GU8 uchGainArr[2], GU8 uchGainShiftA
         }
     }
     // LOGY("[AutoLED][GAIN][CURRECNT] uchFlag = 0x%x \n", uchFlag);
-    /* rawdata´¥·¢ÉÏÏÂÏŞ´¦Àí */
+    /* rawdataè§¦å‘ä¸Šä¸‹é™å¤„ç† */
     if ((uchFlag & 0x03) != 0)
     {
         for (uchChannelIndex = 0; uchChannelIndex < g_uchNeedReadRawdataCount; uchChannelIndex++)
         {
             usPreferredCalcCurrent = 0;
             uchCalcGain = 0;
-            /* ÔÚÌØÊâÓ¦ÓÃÖĞ£¬Èç¶ú»ú£¬ĞŞ¸ÄÍÑÂäãĞÖµ */
+            /* åœ¨ç‰¹æ®Šåº”ç”¨ä¸­ï¼Œå¦‚è€³æœºï¼Œä¿®æ”¹è„±è½é˜ˆå€¼ */
             if (g_stBGAdj.uchTurnOnNotReturnFail)
             {
                 if(g_stBGAdj.stBGAdjCh[uchChannelIndex].uchLastBGLevel >= HBD_AUTOLED_BG_LEVEL4)
@@ -3975,7 +4002,7 @@ GU8 HBD_AutoLedCalcGainCurrent(GU8 uchFlag, GU8 uchGainArr[2], GU8 uchGainShiftA
                     }
                 }
                 else
-                {//½øÈë¼æÈİÄ£Ê½´¦Àí
+                {//è¿›å…¥å…¼å®¹æ¨¡å¼å¤„ç†
                     uchCompatibleResult = HBD_AutoLedCompatibleMode(uchCompatibleFlag, uchChannelIndex, fIpdVal, \
                         &usPreferredCalcCurrent, &uchCalcGain, uchCurrentLimit, uchGainLimit,  g_unIdealTargetValueArr[uchChannelIndex],\
                         unRawdataAvgArr[uchChannelIndex], lnAutoLEDTakeoffThold, uchGainArr[uchChannelIndex], uchCurrentArr[uchChannelIndex]);
@@ -3993,7 +4020,7 @@ GU8 HBD_AutoLedCalcGainCurrent(GU8 uchFlag, GU8 uchGainArr[2], GU8 uchGainShiftA
                     }
                     else /* No solution, return error */
                     {
-                        if (g_stBGAdj.uchTurnOnNotReturnFail)//²»·µ»ØÊ§°Ü¿ª¹Ø
+                        if (g_stBGAdj.uchTurnOnNotReturnFail)//ä¸è¿”å›å¤±è´¥å¼€å…³
                         {
                             if (g_stBGAdj.stBGAdjCh[uchChannelIndex].uchLastBGLevel >= HBD_AUTOLED_BG_WEAKLIGHT)
                             {
@@ -4032,10 +4059,10 @@ GU8 HBD_AutoLedbyNewDataInt(GU32 unRawdata[10])
     GU32 unAutoLedRawdataAvgArr[2] = { 0 };
     GU8 uAutoLEDCalFlag = 0;
     //GU32 unACC = 0;
-    GU8 i = 0;//Í¨µÀË÷Òı
+    GU8 i = 0;//é€šé“ç´¢å¼•
     GU16 usIndex = g_stSampleInfo.unSampleFre - g_stSampleInfo.unAutoLedCalcLen; /*AutoLED Start index*/
     g_stSampleInfo.unSampleFifoDuration = g_stSampleInfo.unSampleFre * g_stSampleInfo.unSampleTim;
-    /*Ôö¼Óµ÷¹â±ê¼Ç add by Benjamin 200817*/
+    /*å¢åŠ è°ƒå…‰æ ‡è®° add by Benjamin 200817*/
     if (g_uchAutoLedLastFlag){
         switch (g_uchAutoLedLastFlag & 0x03)
         {
@@ -4058,7 +4085,7 @@ GU8 HBD_AutoLedbyNewDataInt(GU32 unRawdata[10])
 
     /* BG calculate */
     HBD_AutoLedBGBufferRecursionCalc(unRawdata, g_uchSoftLEDNewdataModeCNT + 1);
-    /* PPG Sat judge   ±¥ºÍÅĞ¶ÏĞèÒª¸ù¾İ±³¾°¹âµÈ¼¶¸Ä±ä±¥ºÍãĞÖµµÄ*/
+    /* PPG Sat judge   é¥±å’Œåˆ¤æ–­éœ€è¦æ ¹æ®èƒŒæ™¯å…‰ç­‰çº§æ”¹å˜é¥±å’Œé˜ˆå€¼çš„*/
     HBD_AutoLedPpgSatJudge(unRawdata);
 
     //unACC = (GU32)sqrt(unRawdata[2] * unRawdata[2] + unRawdata[3] * unRawdata[3] + unRawdata[4] * unRawdata[4]);
@@ -4089,12 +4116,12 @@ GU8 HBD_AutoLedbyNewDataInt(GU32 unRawdata[10])
                 if (!uchAutoLedCurrentArr[i])
                 {
                     uchAutoLedCurrentArr[i] = 20;
-                    g_uchAutoLedLastFlag |= 1 << i;//µ÷¹â±ê¼Ç
+                    g_uchAutoLedLastFlag |= 1 << i;//è°ƒå…‰æ ‡è®°
                 }
             }
             HBD_AutoLedWriteReg(uchAutoLedGainArr, uchAutoLedGainShiftArr, usAutoLedGainMsk,
                 uchAutoLedCurrentArr, uchAutoLedCurrentShift, unAutoLedCurrentMsk);
-            return uAutoLEDCalFlag;//¸ø¶¨µçÁ÷ºó·µ»Ø´Ë´Îµ÷¹â
+            return uAutoLEDCalFlag;//ç»™å®šç”µæµåè¿”å›æ­¤æ¬¡è°ƒå…‰
         }
 
         /* BG Level Process */
@@ -4106,7 +4133,7 @@ GU8 HBD_AutoLedbyNewDataInt(GU32 unRawdata[10])
             return  uAutoLEDCalFlag;
         }
 
-          /* Saturation Process   Êı¾İ±¥ºÍĞŞ¸ÄÀíÏëÄ¿±êÖµ´¥·¢ãĞÖµĞŞ¸Ä*/
+          /* Saturation Process   æ•°æ®é¥±å’Œä¿®æ”¹ç†æƒ³ç›®æ ‡å€¼è§¦å‘é˜ˆå€¼ä¿®æ”¹*/
         HBD_AutoLedSatProcess( );
 
         /* Trigger flag */
@@ -4117,7 +4144,7 @@ GU8 HBD_AutoLedbyNewDataInt(GU32 unRawdata[10])
             return HBD_AUTOLED_ERROR_CURRENT_RAWDATA;//Rawdata is too small, <100
         }
 
-        HBD_AutoLedPpgSatTrigerFlag(&uchAutoLedFlag, unAutoLedRawdataAvgArr);    //ÅĞ¶ÏÊÇ·ñ±¥ºÍ´¥·¢µ÷¹â
+        HBD_AutoLedPpgSatTrigerFlag(&uchAutoLedFlag, unAutoLedRawdataAvgArr);    //åˆ¤æ–­æ˜¯å¦é¥±å’Œè§¦å‘è°ƒå…‰
         /* If Get Current and Gain, uchAutoLedGainArr will be updataed ,
            Write Reg need to check Call:
               FUNCTION HBD_AutoLedWriteRegConfirm */
@@ -4149,7 +4176,7 @@ GU8 HBD_AutoLedbyFifoInt(GU32 *punDataBuffer, GU16 usRawdatabufferCnt)
     GU32 unRawdata[2] = { 0 };
     GU16 usCalcStartIndex = (usRawdatabufferCnt > g_stSampleInfo.unAutoLedCalcLen) ? (usRawdatabufferCnt - g_stSampleInfo.unAutoLedCalcLen) : (0);//start index of trigger calculation
     GU8 uAutoLEDCalFlag = 0;//added by Benjamin 200818
-    GU8 i = 0;//Í¨µÀË÷Òı
+    GU8 i = 0;//é€šé“ç´¢å¼•
 
     // LOGY("[AutoLED][FIFO_IN][IDX]: Start:%d Len:%d Calclen:%d LastFlag:0x%x", usCalcStartIndex, usRawdatabufferCnt, g_stSampleInfo.unAutoLedCalcLen, g_uchAutoLedLastFlag);
     g_stSampleInfo.unSampleFifoDuration = usRawdatabufferCnt * g_stSampleInfo.unSampleTim;
@@ -4207,14 +4234,14 @@ GU8 HBD_AutoLedbyFifoInt(GU32 *punDataBuffer, GU16 usRawdatabufferCnt)
             break;
         }
         /* AutoLED Flag */
-        if (cnt >= usCalcStartIndex)   //Ö»È¡ÖĞ¶Ï×î½üµÄ5Ö¡Êı¾İ´¦Àí
+        if (cnt >= usCalcStartIndex)   //åªå–ä¸­æ–­æœ€è¿‘çš„5å¸§æ•°æ®å¤„ç†
         {
             HBD_AutoLedTrigRecursionCalc(unRawdata,cnt - usCalcStartIndex + 1);
         }
         /*  BG Recursion Calculator */
         HBD_AutoLedBGBufferRecursionCalc(unRawdata, cnt + 1);
 
-        /* PPG Sat judge   ±¥ºÍÅĞ¶ÏĞèÒª¸ù¾İ±³¾°¹âµÈ¼¶¸Ä±ä±¥ºÍãĞÖµµÄ*/
+        /* PPG Sat judge   é¥±å’Œåˆ¤æ–­éœ€è¦æ ¹æ®èƒŒæ™¯å…‰ç­‰çº§æ”¹å˜é¥±å’Œé˜ˆå€¼çš„*/
         HBD_AutoLedPpgSatJudge(unRawdata);
     }
 
@@ -4227,30 +4254,30 @@ GU8 HBD_AutoLedbyFifoInt(GU32 *punDataBuffer, GU16 usRawdatabufferCnt)
             if (!uchAutoLedCurrentArr[i])
             {
                 uchAutoLedCurrentArr[i] = 20;
-                g_uchAutoLedLastFlag |= 1 << i;//µ÷¹â±ê¼Ç
+                g_uchAutoLedLastFlag |= 1 << i;//è°ƒå…‰æ ‡è®°
             }
         }
         HBD_AutoLedWriteReg(uchAutoLedGainArr, uchAutoLedGainShiftArr, usAutoLedGainMsk,
             uchAutoLedCurrentArr, uchAutoLedCurrentShift, unAutoLedCurrentMsk);
-        return uAutoLEDCalFlag;//¸ø¶¨µçÁ÷ºó·µ»Ø´Ë´Îµ÷¹â
+        return uAutoLEDCalFlag;//ç»™å®šç”µæµåè¿”å›æ­¤æ¬¡è°ƒå…‰
     }
 #if (HBD_CTRL_LIB_DEV_VERSION == HBD_CTRL_LIB_FOR_FINGER)
     else
-    { //// Ã»ÓĞ¼Ä´æÆ÷µÄµçÁ÷ÖµÎª0£¬¼ÆËãCTR¹ı´ó£¬ÔòÅĞ¶ÏÖ¸¼ĞÒÇµÄµ÷¹âÊ§°Ü
+    { //// æ²¡æœ‰å¯„å­˜å™¨çš„ç”µæµå€¼ä¸º0ï¼Œè®¡ç®—CTRè¿‡å¤§ï¼Œåˆ™åˆ¤æ–­æŒ‡å¤¹ä»ªçš„è°ƒå…‰å¤±è´¥
         GU16 usMaxDriveCur = 0;
 
         usMaxDriveCur = (HBD_I2cReadReg(HBD_LED_MAXDRIVECUR_REG_ADDR) >> 5) & 0x7;
         usMaxDriveCur = 20 + usMaxDriveCur * 20;
         for (i = 0; i < g_uchNeedReadRawdataCount; i++)
         {
-            GU32 nCuurent = uchAutoLedCurrentArr[i] * usMaxDriveCur; // nCuurent/255ÎªµçÁ÷(µ¥Î»: uA);nCuurent/255=0(ÕûĞÎÏà³ı),¼ÆËãCTRÊ±°Ñ³ıÒÔ255¸ÄÎª³ËÒÔ255
+            GU32 nCuurent = uchAutoLedCurrentArr[i] * usMaxDriveCur; // nCuurent/255ä¸ºç”µæµ(å•ä½: uA);nCuurent/255=0(æ•´å½¢ç›¸é™¤),è®¡ç®—CTRæ—¶æŠŠé™¤ä»¥255æ”¹ä¸ºä¹˜ä»¥255
             GU16 usGainVal = g_usGainArrEnum[uchAutoLedGainArr[i]];
-            GU32 nCtr = ((GU64)(g_stTrigCalcInfo[i].fAvg) * 800 * 255000) / (usGainVal * 65536) / nCuurent; // CTRµ¥Î»: nA/mA
+            GU32 nCtr = ((GU64)(g_stTrigCalcInfo[i].fAvg) * 800 * 255000) / (usGainVal * 65536) / nCuurent; // CTRå•ä½: nA/mA
 
             if (nCtr > __HBD_CTR_WEAROFF_THRESHOLD__)
             {
                 g_uchAutoLedErrorFlag = 1; // Fail
-                return g_uchAutoLedErrorFlag; // µ÷¹âÊ§°Ü·µ»Ø
+                return g_uchAutoLedErrorFlag; // è°ƒå…‰å¤±è´¥è¿”å›
             }
         }
     }
@@ -4265,10 +4292,10 @@ GU8 HBD_AutoLedbyFifoInt(GU32 *punDataBuffer, GU16 usRawdatabufferCnt)
         return  uAutoLEDCalFlag;
     }
 
-    /* Saturation Process Êı¾İ±¥ºÍĞŞ¸ÄÀíÏëÄ¿±êÖµ´¥·¢ãĞÖµĞŞ¸Ä*/
+    /* Saturation Process æ•°æ®é¥±å’Œä¿®æ”¹ç†æƒ³ç›®æ ‡å€¼è§¦å‘é˜ˆå€¼ä¿®æ”¹*/
     HBD_AutoLedSatProcess();
 
-    /* Rawdata Trigger µ÷¹â´¥·¢ÉÏãĞÖµ»á¸ù¾İ±³¾°¹âµÈ¼¶ĞŞ¸Ä */
+    /* Rawdata Trigger è°ƒå…‰è§¦å‘ä¸Šé˜ˆå€¼ä¼šæ ¹æ®èƒŒæ™¯å…‰ç­‰çº§ä¿®æ”¹ */
     uchAutoLedFlag = HBD_AutoLedCalcTrigerFlag();
 
     if (HBD_AutoLedRawdataAvgDeal(unAutoLedRawdataAvgArr))
@@ -4277,7 +4304,7 @@ GU8 HBD_AutoLedbyFifoInt(GU32 *punDataBuffer, GU16 usRawdatabufferCnt)
         return HBD_AUTOLED_ERROR_CURRENT_RAWDATA;//Rawdata is too small, <100
     }
 
-    HBD_AutoLedPpgSatTrigerFlag(&uchAutoLedFlag, unAutoLedRawdataAvgArr);    //ÅĞ¶ÏÊÇ·ñ±¥ºÍ´¥·¢µ÷¹â
+    HBD_AutoLedPpgSatTrigerFlag(&uchAutoLedFlag, unAutoLedRawdataAvgArr);    //åˆ¤æ–­æ˜¯å¦é¥±å’Œè§¦å‘è°ƒå…‰
 
     /* If Get Current and Gain, uchAutoLedGainArr will be updataed,
        Write Reg need to check Call:
@@ -5443,13 +5470,13 @@ GU16 Gh30xGetFifoRawdata(GU8 *puchRawdataFifo, GU8 *puchNeedForceReadAgain)
     GU16 usIrqFifoFullRegValue = 0; //add to deal xiaoxun bug   20220208_goodix4318
 
     puchNeedForceReadAgain[0] = 0;
-    EXAMPLE_DEBUG_LOG_L1("[Gh30xGetFifoRawdata] usRawdataFifoRealCnt = %d, %d.\r", (int)usRawdataFifoRealCnt, g_uchNeedReadRawdataCount);
+    // EXAMPLE_DEBUG_LOG_L1("[Gh30xGetFifoRawdata] usRawdataFifoRealCnt = %d, %d.\r", (int)usRawdataFifoRealCnt, g_uchNeedReadRawdataCount);
 
     if (usRawdataFifoRealCnt > GH30X_RAWDATA_FIFO_BUF_SAMPLE_POINT_NUM_MAX)
     {
         usRawdataFifoRealCnt = GH30X_RAWDATA_FIFO_BUF_SAMPLE_POINT_NUM_MAX;
         puchNeedForceReadAgain[0] = 1;  //rawdata buffer is not enough big, we need force read again
-        EXAMPLE_DEBUG_LOG_L1("[Gh30xGetFifoRawdata]rawdata buffer is not enough big, we need force read again.\r\n");
+        // EXAMPLE_DEBUG_LOG_L1("[Gh30xGetFifoRawdata]rawdata buffer is not enough big, we need force read again.\r\n");
     }
 
     if ((usRawdataFifoRealCnt % g_uchNeedReadRawdataCount) == 1)
@@ -5652,7 +5679,7 @@ static void HBD_PackFifoRawdataWithGsensor(GU8 *puchRawdataFifo, GU16 usRawdataF
         }
         else
         {
-            //GsensorÊı¾İ±ÈPPGÊı¾İÉÙµÄ»°¾Í½øĞĞ²îÖµºÍÖØ²ÉÑù´¦Àí²¹Æë
+            //Gsensoræ•°æ®æ¯”PPGæ•°æ®å°‘çš„è¯å°±è¿›è¡Œå·®å€¼å’Œé‡é‡‡æ ·å¤„ç†è¡¥é½
             ST_GS_DATA_TYPE stGsensorNewData = HBD_ResampleGsensorData(stGsensorDataArr, stGsensorDataRealCnt, usRawdataFifoRealCnt, usRawdataIndex);
             nRawDataArrForAlgo[2] = (GS32)(stGsensorNewData.sXAxisVal / usGsensorDataRightShift);
             nRawDataArrForAlgo[3] = (GS32)(stGsensorNewData.sYAxisVal / usGsensorDataRightShift);
@@ -5733,7 +5760,7 @@ static void HBD_PackFifoRawdataWithGsensorDbgU8(GU8 *puchRawdataFifo, GU16 usRaw
         }
         else
         {
-            //GsensorÊı¾İ±ÈPPGÊı¾İÉÙµÄ»°¾Í½øĞĞ²îÖµºÍÖØ²ÉÑù´¦Àí²¹Æë
+            //Gsensoræ•°æ®æ¯”PPGæ•°æ®å°‘çš„è¯å°±è¿›è¡Œå·®å€¼å’Œé‡é‡‡æ ·å¤„ç†è¡¥é½
             ST_GS_DATA_TYPE stGsensorNewData = HBD_ResampleGsensorData(stGsensorDataArr, stGsensorDataRealCnt, usRawdataFifoRealCnt, usRawdataIndex);
             nRawDataArrForAlgo[2] = (GS32)(stGsensorNewData.sXAxisVal / usGsensorDataRightShift);
             nRawDataArrForAlgo[3] = (GS32)(stGsensorNewData.sYAxisVal / usGsensorDataRightShift);
@@ -7707,7 +7734,7 @@ GU16 HBD_InearEpWearDetectCalculateByFifoInt(ST_GS_DATA_TYPE stGsAxisValue[], GU
           emGsensorSensitivity: G-sensor sensitivity (counts/g), see EM_HBD_GSENSOR_SENSITIVITY
 * Output: puchWearState:ptr of wear state value output, 0:default, 1:wear, 2:unwear,
           nRawdataOut: ptr of rawdata array output (ppg1, ppg2, gs-x, gs-y, gs-z, index)
-          pusRawdataOutLen£ºptr of rawdata len output
+          pusRawdataOutLenï¼šptr of rawdata len output
 * Return: refresh flag, if wear state value have refresh that return 1.
 ******************************************************************/
 #if 0
@@ -7884,18 +7911,18 @@ GU8 HBD_GetSpo2AbnormalState (void)
 
 /****************************************************************
 * Description: calculate SpO2_value good or not
-* Input:nSpO2Arr[0]£ºÑªÑõÖµ£¬·µ»ØÎª70-100£»
-        nSpO2Arr[1]£ºÑªÑõÖÃĞÅµÈ¼¶£»
-        nSpO2Arr[2]£ºÑªÑõÊµÊ±ÖÃĞÅ¶È£»
-        nSpO2Arr[3]£ºÑªÑõÆ½¾ùRÖµ*10000£»
-        nSpO2Arr[4]£ººìÍâĞÄÂÊÖµ£»
-        nSpO2Arr[5]£ººìÍâĞÄÂÊÖÃĞÅ¶È£»
-        nSpO2Arr[6]£ºÊı¾İÎŞĞ§±ê¼Ç£¬ÎŞĞ§£¨µ÷¹â»òÔË¶¯£©Ê±Îª1
-        nSpO2Arr[7]£ººìÍâPIÖµ*100000
-        nSpO2Arr[8]£ººì¹âPIÖµ*100000
-        nSpO2Arr[9]£ººìÍâSNRÖµ*10
-        nSpO2Arr[10]£ººì¹âSNRÖµ*10
-        nSpO2Arr[11]£ºÑªÑõÊµÊ±RÖµ*10000
+* Input:nSpO2Arr[0]ï¼šè¡€æ°§å€¼ï¼Œè¿”å›ä¸º70-100ï¼›
+        nSpO2Arr[1]ï¼šè¡€æ°§ç½®ä¿¡ç­‰çº§ï¼›
+        nSpO2Arr[2]ï¼šè¡€æ°§å®æ—¶ç½®ä¿¡åº¦ï¼›
+        nSpO2Arr[3]ï¼šè¡€æ°§å¹³å‡Rå€¼*10000ï¼›
+        nSpO2Arr[4]ï¼šçº¢å¤–å¿ƒç‡å€¼ï¼›
+        nSpO2Arr[5]ï¼šçº¢å¤–å¿ƒç‡ç½®ä¿¡åº¦ï¼›
+        nSpO2Arr[6]ï¼šæ•°æ®æ— æ•ˆæ ‡è®°ï¼Œæ— æ•ˆï¼ˆè°ƒå…‰æˆ–è¿åŠ¨ï¼‰æ—¶ä¸º1
+        nSpO2Arr[7]ï¼šçº¢å¤–PIå€¼*100000
+        nSpO2Arr[8]ï¼šçº¢å…‰PIå€¼*100000
+        nSpO2Arr[9]ï¼šçº¢å¤–SNRå€¼*10
+        nSpO2Arr[10]ï¼šçº¢å…‰SNRå€¼*10
+        nSpO2Arr[11]ï¼šè¡€æ°§å®æ—¶Rå€¼*10000
 ******************************************************************/
 static void HBD_SpO2AbnormalStateCalc(GS32 uchRet, ST_ALGO_RESULT *stSpo2Result)
 {
@@ -8719,7 +8746,7 @@ GU8 HBD_AdtConfirmCalculateByFifoInt(ST_GS_DATA_TYPE stGsAxisValue[], GU16 usGsD
              usGsDataNum: gsensor data count
              emGsensorSensitivity: G-sensor sensitivity (counts/g), see EM_HBD_GSENSOR_SENSITIVITY
 * Output:   nRawdataOut: ptr of rawdata array output (ppg1, ppg2, gs-x, gs-y, gs-z, index)
-            pusRawdataOutLen£ºptr of rawdata len output
+            pusRawdataOutLenï¼šptr of rawdata len output
 * Return: wear flag, 0x00: calc ing 0x11:wear, 0x12:unwear
 ******************************************************************/
 #if 0
@@ -8787,7 +8814,7 @@ GU8 HBD_AdtConfirmCalculateByFifoIntDbgOutputData(ST_GS_DATA_TYPE stGsAxisValue[
 }
 #endif
 /*****************************************************************************************
-* Description: set LED current£¬can not set in adt mode and sleep mode
+* Description: set LED currentï¼Œcan not set in adt mode and sleep mode
 * Input:  fLed0Current:LED0 current
           fLed1Current:LED1 current
 * Return: HBD_RET_PARAMETER_ERROR: out of range,and set current to the closest limit value
@@ -9086,7 +9113,7 @@ static GU8 HBD_IRConfirmAlgoCalc(GS32 *plRawdataBuff)
              usGsDataNum: gsensor data count
              emGsensorSensitivity: G-sensor sensitivity (counts/g), see EM_HBD_GSENSOR_SENSITIVITY
 * Output:   nRawdataOut: ptr of rawdata array output (ppg1, ppg2, gs-x, gs-y, gs-z, index)
-            pusRawdataOutLen£ºptr of rawdata len output
+            pusRawdataOutLenï¼šptr of rawdata len output
 * Return: wear flag, 0x00: calc ing 0x11:wear, 0x12:unwear
 ******************************************************************/
 #if 0

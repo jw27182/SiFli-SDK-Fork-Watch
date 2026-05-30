@@ -43,9 +43,9 @@
 
 /* algorithm log */
 #ifdef GOODIX_DEMO_PLANFORM
-#define __ALGO_LOG_CONFIG__                    (2)
+#define __ALGO_LOG_CONFIG__                    (0)
 #else
-#define __ALGO_LOG_CONFIG__                    (2)
+#define __ALGO_LOG_CONFIG__                    (0)
 #endif
 
 /* algorithm config max number */

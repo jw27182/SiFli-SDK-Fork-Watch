@@ -14,6 +14,7 @@
 #include "gh30x_demo_algorithm_calc.h"
 #include "gh30x_demo_algo_config.h"
 #include "goodix_hba.h"
+#include <rtthread.h>
 
 #if (__USE_GOODIX_HR_ALGORITHM__)
 
@@ -114,13 +115,12 @@ GS8 GH30xHrAlgoExe(const STGh30xFrameInfo * const pstFrameInfo)
     stRawdata.acc_z = pstFrameInfo->pusGsensordata[2];
     stRawdata.sleep_flg = 0;
 
-    #if 0
-    GH30X_ALGO_LOG_PARAM("[%s]:Rawdata = %d,0x%X,%d\r\n", __FUNCTION__,
-                                                                            stRawdata.frameid,
-                                                                            stRawdata.ppg_rawdata[0],
-                                                                            stRawdata.enable_flg[0]
-                                                                            );
-    #endif
+#if 1 /* [DBG_HR_ALGO] */
+    rt_kprintf("[DBG_HR_ALGO] Exe: frameid=%d ppg=0x%X(%u) acc=(%d,%d,%d)\r\n",
+               (int)stRawdata.frameid,
+               (unsigned)stRawdata.ppg_rawdata[0], (unsigned)stRawdata.ppg_rawdata[0],
+               (int)stRawdata.acc_x, (int)stRawdata.acc_y, (int)stRawdata.acc_z);
+#endif
 
     /* call algorithm, update result */
     if (goodix_hba_update(&stRawdata, &stResult) == GX_ALGO_HBA_SUCCESS)
@@ -136,26 +136,16 @@ GS8 GH30xHrAlgoExe(const STGh30xFrameInfo * const pstFrameInfo)
             pstFrameInfo->pstAlgoResult->snResult[4] = (GS32)stResult.hba_acc_info;
             pstFrameInfo->pstAlgoResult->snResult[5] = (GS32)stResult.hba_acc_scence;
 
-            // 日志详细打印: 心率(HR), 更新标志(UpdateFlag), 置信度得分(valid_score),
-            // 信噪比(hba_snr), 有效等级(valid_level), 加速度信息(hba_acc_info), 场景信息(hba_acc_scence)
-            GH30X_ALGO_LOG_PARAM(
-                "[%s] hr = %d"         // 心率值 bpm
-                ", UpdateFlag = %d"   // 结果更新标志
-                ", valid_score = %d"  // 置信度得分
-                ", SNR = %d"          // 信噪比
-                ", valid_level = %d"  // 有效等级
-                ", hba_acc_info = %d" // 加速度信息
-                ", hba_acc_scence = %d" // 场景信息
-                "\r\n",
-                __FUNCTION__,
-                (int)pstFrameInfo->pstAlgoResult->snResult[0],    // hr
-                (int)pstFrameInfo->pstAlgoResult->uchUpdateFlag,  // UpdateFlag
-                (int)pstFrameInfo->pstAlgoResult->snResult[1],    // valid_score
-                (int)pstFrameInfo->pstAlgoResult->snResult[2],    // SNR
-                (int)pstFrameInfo->pstAlgoResult->snResult[3],    // valid_level
-                (int)pstFrameInfo->pstAlgoResult->snResult[4],    // hba_acc_info
-                (int)pstFrameInfo->pstAlgoResult->snResult[5]     // hba_acc_scence
-            );
+#if 1 /* [DBG_HR_ALGO] */
+            rt_kprintf("[DBG_HR_ALGO] Result: hr=%d UpdateFlag=%d score=%d SNR=%d level=%d acc_info=%d scene=%d\r\n",
+                       (int)pstFrameInfo->pstAlgoResult->snResult[0],
+                       (int)pstFrameInfo->pstAlgoResult->uchUpdateFlag,
+                       (int)pstFrameInfo->pstAlgoResult->snResult[1],
+                       (int)pstFrameInfo->pstAlgoResult->snResult[2],
+                       (int)pstFrameInfo->pstAlgoResult->snResult[3],
+                       (int)pstFrameInfo->pstAlgoResult->snResult[4],
+                       (int)pstFrameInfo->pstAlgoResult->snResult[5]);
+#endif
 
             pstFrameInfo->pstAlgoResult->usResultBit = 0x3F;
             pstFrameInfo->pstAlgoResult->uchResultNum = GH30x_BitCount(pstFrameInfo->pstAlgoResult->usResultBit);

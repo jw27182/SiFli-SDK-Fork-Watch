@@ -11,6 +11,7 @@
 #include "gh30x_example.h"
 #include "math.h"
 #include "gh30x_demo_algo_call.h"
+#include <rtthread.h>
 
 typedef struct
 {
@@ -280,6 +281,26 @@ void Gh30xDemoSampleStart(const ST_REGISTER *pstBaseArray, GU16 usBaseArrayLen,
 
     /**** init channel info ***/
     Gh30xGetChnlInfo();
+#if 1 /* [DBG_LED] */
+    {
+        GU16 led_en = HBD_I2cReadReg(0x0084);
+        GU16 led0_cur = HBD_I2cReadReg(0x0118);
+        GU16 led1_cur = HBD_I2cReadReg(0x011A);
+        GU16 led2_cur = HBD_I2cReadReg(0x011C);
+        rt_kprintf("[DBG_LED] reg0084=0x%04X LED_EN bits[2:0]=%d%d%d\r\n",
+                   (unsigned)led_en,
+                   (int)((led_en >> 2) & 1), (int)((led_en >> 1) & 1), (int)(led_en & 1));
+        rt_kprintf("[DBG_LED] LED_CUR: 0x0118=0x%04X 0x011A=0x%04X 0x011C=0x%04X\r\n",
+                   (unsigned)led0_cur, (unsigned)led1_cur, (unsigned)led2_cur);
+        rt_kprintf("[DBG_LED] CHNL_INFO: NeedReadCnt=%d\r\n", (int)g_uchNeedReadRawdataCount);
+        for (int ci = 0; ci < g_uchNeedReadRawdataCount; ci++)
+        {
+            rt_kprintf("[DBG_LED]   Phase%d: LedColor=%d DrvCode=%d\r\n",
+                       ci, (int)g_pstGh30xChnlInfo[ci].uchLedColor,
+                       (int)g_pstGh30xChnlInfo[ci].uchDrvCurrentCode);
+        }
+    }
+#endif
 
     /**** load pstAppendArray ***/
     if (0 != pstAppendArray)
@@ -440,6 +461,12 @@ void gh30x_module_start(GU32 unFunctionMode)
         unFunctionMode, g_uchNeedReadRawdataCount,
         stSampleResetCfgTemp.usResetEn, stSampleResetCfgTemp.usResetSampleRate,
         stSampleResetCfgTemp.uchResetFifoWaterLine);
+#if 1 /* [DBG_MOD] */
+    rt_kprintf("[DBG_MOD] module_start funcMode=0x%X NeedReadCnt=%d sampleRate=%d fifoWm=%d\r\n",
+               (unsigned)unFunctionMode, (int)g_uchNeedReadRawdataCount,
+               (int)stSampleResetCfgTemp.usResetSampleRate,
+               (int)stSampleResetCfgTemp.uchResetFifoWaterLine);
+#endif
 
     gh30x_run_mode = (uint8_t)unFunctionMode;
 
@@ -530,7 +557,12 @@ void Gh30xFunctionFrameInfoBaseInit(void)
     g_pstGh30xFrameInfo[GH30X_FUNC_OFFSET_HR]
         ->pstFunctionInfo->usOutputDataRate = 25;
     g_pstGh30xFrameInfo[GH30X_FUNC_OFFSET_HR]->puchChnlMap[0] =
-        CHNL_MAP_TO_FIFO_PHASE0_DATA;
+        CHNL_MAP_TO_FIFO_PHASE1_DATA;
+#if 1 /* [DBG_CHNL] */
+    rt_kprintf("[DBG_CHNL] HR chnlNum=1 map[0]=%d(Phase1) rate=%d\r\n",
+               (int)g_pstGh30xFrameInfo[GH30X_FUNC_OFFSET_HR]->puchChnlMap[0],
+               (int)g_pstGh30xFrameInfo[GH30X_FUNC_OFFSET_HR]->pstFunctionInfo->usOutputDataRate);
+#endif
 #endif
 
 #if __FUNC_TYPE_HRV_ENABLE__
@@ -1636,6 +1668,51 @@ void GH30xGetFrameDataAndProcess(GU8 *puchRawdataBuf,
             }
             g_frame_data_cnt++;
 
+#if 1 /* [DBG_FRAME] [DBG_FRAME_SADT] */
+            // Debug: log frame assembly for HR function
+            if (pstFrameInfo->unFunctionID == GH30X_FUNCTION_HR)
+            {
+                GU32 raw = pstFrameInfo->punRawdata[0];
+                GU32 ppg = (raw >> 7) & 0x1FFFF;
+                GU8 gain = (raw >> 24) & 0x07;
+                GU8 adj = (raw >> 30) & 0x01;
+                rt_kprintf("[DBG_FRAME] HR frame#%lu raw=0x%08X ppg=%u gain=%u adj=%u gs=(%d,%d,%d)\r\n",
+                           (unsigned long)pstFrameInfo->punFrameCnt[0],
+                           (unsigned)raw, (unsigned)ppg, (unsigned)gain, (unsigned)adj,
+                           (int)pstFrameInfo->pusGsensordata[0],
+                           (int)pstFrameInfo->pusGsensordata[1],
+                           (int)pstFrameInfo->pusGsensordata[2]);
+            }
+
+            // Debug: log frame assembly for SOFT_ADT function (NADT)
+            if (pstFrameInfo->unFunctionID == GH30X_FUNCTION_SOFT_ADT)
+            {
+                GU32 raw0 = pstFrameInfo->punRawdata[0];
+                GU32 raw1 = pstFrameInfo->punRawdata[1];
+                GU32 ppg0 = (raw0 >> 7) & 0x1FFFF;
+                GU32 ppg1 = (raw1 >> 7) & 0x1FFFF;
+                GU8 gain0 = (raw0 >> 24) & 0x07;
+                GU8 gain1 = (raw1 >> 24) & 0x07;
+                GU8 adj0 = (raw0 >> 30) & 0x01;
+                GU8 adj1 = (raw1 >> 30) & 0x01;
+                GU8 bg0 = (raw0 >> 27) & 0x07;
+                GU8 bg1 = (raw1 >> 27) & 0x07;
+                rt_kprintf("[DBG_FRAME_SADT] frame#%lu chnlNum=%u\r\n",
+                           (unsigned long)pstFrameInfo->punFrameCnt[0],
+                           (unsigned)uchChnlNum);
+                rt_kprintf("[DBG_FRAME_SADT]   Phase0: raw=0x%08X ppg=%u gain=%u adj=%u bg=%u drvCur=%u\r\n",
+                           (unsigned)raw0, (unsigned)ppg0, (unsigned)gain0, (unsigned)adj0, (unsigned)bg0,
+                           (unsigned)pstFrameInfo->pchDrvCurrentCode[0]);
+                rt_kprintf("[DBG_FRAME_SADT]   Phase1: raw=0x%08X ppg=%u gain=%u adj=%u bg=%u drvCur=%u\r\n",
+                           (unsigned)raw1, (unsigned)ppg1, (unsigned)gain1, (unsigned)adj1, (unsigned)bg1,
+                           (unsigned)pstFrameInfo->pchDrvCurrentCode[1]);
+                rt_kprintf("[DBG_FRAME_SADT]   gSensor: (%d, %d, %d)\r\n",
+                           (int)pstFrameInfo->pusGsensordata[0],
+                           (int)pstFrameInfo->pusGsensordata[1],
+                           (int)pstFrameInfo->pusGsensordata[2]);
+            }
+#endif
+
             // calculate next fGsensorIndex
             fGsensorIndex += fGensorStep;
             if (fGsensorIndex > (usGsDataNum - 1))
@@ -1792,6 +1869,49 @@ void gh30x_fifo_evt_handler(void)
             (GU8 *)(g_UNGh30xRawdataBuf.stRawdataBuf.unPpgRawdataBuf),
             &uchNeedForceReadAgain);
 
+#if 1 /* [DBG_FIFO] [DBG_FIX] */
+        /* RAW数据日志已禁用 - 每FIFO事件50行输出导致系统卡死 */
+        /* 仅打印摘要信息 */
+        rt_kprintf("[DBG_FIFO] samples=%u NeedReadCnt=%u funcMode=0x%X gsNum=%u\r\n",
+                   (unsigned)usFifoSamplePointNum, (unsigned)g_uchNeedReadRawdataCount,
+                   (unsigned)g_unGh30xDemoFuncMode, (unsigned)usGsensorNum);
+        // 打印 gsensor 数据摘要
+        if (usGsensorNum > 0)
+        {
+            rt_kprintf("[DBG_FIFO] gs[0]=(%d,%d,%d) gs[%u]=(%d,%d,%d)\r\n",
+                       (int)g_UNGh30xRawdataBuf.stRawdataBuf.stGsensorBuf[0].sXAxisVal,
+                       (int)g_UNGh30xRawdataBuf.stRawdataBuf.stGsensorBuf[0].sYAxisVal,
+                       (int)g_UNGh30xRawdataBuf.stRawdataBuf.stGsensorBuf[0].sZAxisVal,
+                       (unsigned)(usGsensorNum - 1),
+                       (int)g_UNGh30xRawdataBuf.stRawdataBuf.stGsensorBuf[usGsensorNum - 1].sXAxisVal,
+                       (int)g_UNGh30xRawdataBuf.stRawdataBuf.stGsensorBuf[usGsensorNum - 1].sYAxisVal,
+                       (int)g_UNGh30xRawdataBuf.stRawdataBuf.stGsensorBuf[usGsensorNum - 1].sZAxisVal);
+        }
+        else
+        {
+            rt_kprintf("[DBG_FIFO] WARNING: gsensorNum=0, no accelerometer data!\r\n");
+        }
+
+        /* 修复：如果 NeedReadCnt 为 0 但有数据，强制重新初始化 */
+        if (0 == g_uchNeedReadRawdataCount && usFifoSamplePointNum > 0)
+        {
+            rt_kprintf("[DBG_FIX] NeedReadCnt=0 detected! Re-reading channel info...\r\n");
+            GU16 reg0084 = HBD_I2cReadReg(HBD_CONFIG_REG_ADDR);
+            rt_kprintf("[DBG_FIX] reg0084=0x%04X\r\n", (unsigned)reg0084);
+            Gh30xGetChnlInfo();
+            rt_kprintf("[DBG_FIX] After re-init: NeedReadCnt=%u\r\n",
+                       (unsigned)g_uchNeedReadRawdataCount);
+            if (0 == g_uchNeedReadRawdataCount)
+            {
+                /* 如果仍然是0，根据原始数据分析强制设置为2 */
+                rt_kprintf("[DBG_FIX] Still 0! Force NeedReadCnt=2\r\n");
+                g_uchNeedReadRawdataCount = 2;
+                g_usReadRawdataRegList[0] = HBD_LED0_DATA_L_REG_ADDR;
+                g_usReadRawdataRegList[1] = HBD_LED0_DATA_L_REG_ADDR + 4;
+            }
+        }
+#endif
+
         HOOK_FUNC_CALL(g_pGh30xGetRawdataHookFunc,
                        (g_UNGh30xRawdataBuf.stRawdataBuf.unPpgRawdataBuf,
                         usFifoSamplePointNum));
@@ -1828,9 +1948,9 @@ void gh30x_fifo_evt_handler(void)
             usGsensorNum);
     }
 
-    EXAMPLE_DEBUG_LOG_L1(
-        "[%s] g_unGh30xDemoFuncMode: 0x%x, g_uchGh30xSoftEvent:0x%x\r\n",
-        __FUNCTION__, g_unGh30xDemoFuncMode, g_uchGh30xSoftEvent);
+    // EXAMPLE_DEBUG_LOG_L1(
+    //     "[%s] g_unGh30xDemoFuncMode: 0x%x, g_uchGh30xSoftEvent:0x%x\r\n",
+    //     __FUNCTION__, g_unGh30xDemoFuncMode, g_uchGh30xSoftEvent);
 
     if (GH30X_FUNCTION_ADT & g_unGh30xDemoFuncMode ||
         GH30X_FUNCTION_SOFT_ADT &
@@ -1965,12 +2085,47 @@ void gh30x_new_data_evt_handler(void)
 }
 
 /// gh30x fifo full evt handler
+/// 【根因修复】FIFO满时不再永久停止，而是重新初始化并恢复采样。
+/// 之前仅调用 HBD_Stop() 不重启，导致传感器永久停止、中断不再产生。
 void gh30x_fifo_full_evt_handler(void)
 {
-    HBD_Stop();
+    GS8 reinit_ret = HBD_RET_OK;
+    GU8 reinit_cnt = __RESET_REINIT_CNT_CONFIG__;
+    GU32 prev_run_mode = gh30x_run_mode;
+
     EXAMPLE_DEBUG_LOG_L1(
-        "got gh30x fifo full evt, func[%s],  shouldn't reach here!!\r\n",
+        "got gh30x fifo full evt, func[%s], reinit and restart...\r\n",
         dbg_rum_mode_string[gh30x_run_mode]);
+
+    /* 1. 停止当前采样 */
+    Gh30xDemoSampleStop();
+
+    /* 2. 重置运动检测状态（避免死锁） */
+    g_uchGh30xMotionDetEn = 0;
+    g_uchGh30xSoftEvent = 0;
+
+    /* 3. 重新初始化芯片 */
+    gsensor_enter_normal_and_clear_buffer();
+    do
+    {
+        reinit_ret = HBD_SimpleInit(&gh30x_init_config);
+        reinit_cnt--;
+    } while (reinit_ret != HBD_RET_OK && reinit_cnt > 0);
+
+    if (reinit_ret == HBD_RET_OK && prev_run_mode != RUN_MODE_INVALID)
+    {
+        /* 4. 重启采样 */
+        gh30x_module_start(prev_run_mode);
+        EXAMPLE_DEBUG_LOG_L1(
+            "fifo full: reinit ok, restarted mode 0x%X\r\n",
+            (unsigned)prev_run_mode);
+    }
+    else
+    {
+        EXAMPLE_DEBUG_LOG_L1(
+            "fifo full: reinit failed ret=%d, mode=0x%X\r\n",
+            (int)reinit_ret, (unsigned)prev_run_mode);
+    }
 }
 
 /// gh30x int msg handler
@@ -1985,12 +2140,12 @@ void gh30x_int_msg_handler(void)
         EXAMPLE_DEBUG_LOG_L1("Invalid INT event, this time will be skip.\r\n");
         return;
     }
-    g_uchNewIntFlag = 1;
 
     gh30x_irq_status = HBD_GetIntStatus();
-    EXAMPLE_DEBUG_LOG_L1(
-        "gh30x_int_msg_handler gh30x_irq_status = %d chip_state = %x\r\n",
-        gh30x_irq_status, HBD_I2cReadReg(HBD_IRQ_CTRL_REG_ADDR) & 0x00E0);
+    g_uchNewIntFlag = 0; /* 在HBD_GetIntStatus()之后清零，避免HBD_TryToWakeUp()误判 */
+    // EXAMPLE_DEBUG_LOG_L1(
+    //     "gh30x_int_msg_handler gh30x_irq_status = %d chip_state = %x\r\n",
+    //     gh30x_irq_status, HBD_I2cReadReg(HBD_IRQ_CTRL_REG_ADDR) & 0x00E0);
 
     if (gh30x_irq_status == INT_STATUS_FIFO_WATERMARK)
     {

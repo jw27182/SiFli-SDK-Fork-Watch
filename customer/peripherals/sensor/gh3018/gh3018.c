@@ -50,6 +50,7 @@
 #include "board.h"
 #include "gh30x_example.h"
 #include "gh3018.h"
+#include "gh30x_hr_ui_notify.h"
 #ifdef BSP_USING_BLOC_PERIPHERAL
     #include "bloc_peripheral.h"
 #endif
@@ -165,13 +166,24 @@ int reset_gh3018(void)
     return 0;
 }
 
-static bool last_wearing_status = false;
 void soft_adt_callback(bool status)
 {
-    if (last_wearing_status == status)
-        return;
+#if 1 /* [DBG_SOFT_ADT] */
+    rt_kprintf("[DBG_SOFT_ADT] wear status: %d\r\n", (int)status);
+#endif
 
-    last_wearing_status = status;
+    /*
+     * 不在此处自动切换传感器模式。
+     * 之前的做法（OFF→SOFT_ADT-only, ON→HR+SOFT_ADT）会导致快速振荡：
+     *   摘下→SOFT_ADT-only→NADT短暂检测到佩戴→重启HR→又检测到摘下→循环
+     *
+     * 正确做法：佩戴状态变化通过 UI 通知链上报，
+     * 由 UI 层（heart_rate.c）决定何时停止/重启传感器。
+     * 摘下后传感器继续运行，UI 显示"未佩戴，请佩戴"，
+     * 用户点击"重新检测"后 UI 调用 heart_rate_sensor_start() 重启。
+     */
+    gh30x_hr_ui_notify_wear(status ? GH30X_WEAR_STATUS_WEARING
+                                    : GH30X_WEAR_STATUS_OFF);
 }
 
 #define DRV_GH3018_TEST

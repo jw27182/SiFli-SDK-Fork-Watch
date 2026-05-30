@@ -11,7 +11,13 @@ static rt_mq_t s_hr_mq;
 static void hr_mq_bridge(const gh30x_hr_ui_sample_t *sample)
 {
     gh30x_hr_ui_sample_t copy;
-    if (s_hr_mq == RT_NULL || sample == RT_NULL) return;
+    if (s_hr_mq == RT_NULL || sample == RT_NULL) {
+#if 1 /* [DBG_MQ] */
+        rt_kprintf("[DBG_MQ] bridge SKIP: mq=%p sample=%p\r\n",
+                   (void*)s_hr_mq, (void*)sample);
+#endif
+        return;
+    }
     copy = *sample;
 #if HR_UI_MQ_TRACE
     {
@@ -25,7 +31,12 @@ static void hr_mq_bridge(const gh30x_hr_ui_sample_t *sample)
         }
     }
 #endif
-    (void)rt_mq_send(s_hr_mq, &copy, sizeof(copy));
+    rt_err_t err = rt_mq_send(s_hr_mq, &copy, sizeof(copy));
+    if (err != RT_EOK) {
+#if 1 /* [DBG_MQ] */
+        rt_kprintf("[DBG_MQ] bridge FAIL: mq_send err=%d\r\n", (int)err);
+#endif
+    }
 }
 
 #endif
@@ -49,6 +60,24 @@ rt_mq_t heart_rate_mq_get(void)
     return s_hr_mq;
 #else
     return RT_NULL;
+#endif
+}
+
+void heart_rate_mq_flush(void)
+{
+#ifdef HR_USING_GH3018
+    if (s_hr_mq == RT_NULL) return;
+    gh30x_hr_ui_sample_t dummy;
+    rt_uint32_t flushed = 0;
+    while (rt_mq_recv(s_hr_mq, &dummy, sizeof(dummy), 0) == RT_EOK) {
+        flushed++;
+    }
+    if (flushed > 0) {
+#if 1 /* [DBG_MQ] */
+        rt_kprintf("[DBG_MQ] flush: %lu stale messages discarded\r\n",
+                   (unsigned long)flushed);
+#endif
+    }
 #endif
 }
 

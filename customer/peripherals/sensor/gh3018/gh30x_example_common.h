@@ -1899,7 +1899,7 @@ extern GU8 g_uchHbaScenario;
 
 #define CONFIT_SIZE(config_array) (config_array##_len)
 
-#define GH30X_ALGO_RESULT_MAX_NUM   8
+#define GH30X_ALGO_RESULT_MAX_NUM   24
 
 #define CHNL_MAP_TO_FIFO_PHASE0_DATA  0x00      /** map to fifo's phase0 data (fifo first data is phase0 data) */
 #define CHNL_MAP_TO_FIFO_PHASE1_DATA  0x01      /** map to fifo's phase1 data  */

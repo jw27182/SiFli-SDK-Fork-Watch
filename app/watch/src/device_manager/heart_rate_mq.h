@@ -12,4 +12,7 @@ int heart_rate_mq_init(void);
 /* 心率页从该队列非阻塞取 gh30x_hr_ui_sample_t；未启用 GH3018 时返回 RT_NULL */
 rt_mq_t heart_rate_mq_get(void);
 
+/** 清空消息队列中的旧消息（HR页面重新进入时调用） */
+void heart_rate_mq_flush(void);
+
 #endif /* HEART_RATE_MQ_H__ */

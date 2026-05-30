@@ -17,6 +17,12 @@
 #include "bf0_hal.h"
 #include "gh3018.h"
 
+/* LSM6DSL G-sensor integration */
+#include "rtdevice.h"
+#ifdef RT_USING_SENSOR
+#include "sensor.h"
+#endif
+
 #define DRV_DEBUG
 #define LOG_TAG "gh30x.port"
 #include <drv_log.h>
@@ -373,6 +379,49 @@ void gsensor_drv_get_fifo_data(ST_GS_DATA_TYPE gsensor_buffer[],
         gsensor_buffer[i].sZAxisVal = gsensor_fifo_buffer[origin_buf_index][2];
     }
     *gsensor_buffer_index = gsensor_max_len;
+#else
+    /* LSM6DSL G-sensor integration via RT-Thread sensor framework */
+#ifdef RT_USING_SENSOR
+    static rt_device_t acce_dev = RT_NULL;
+    static rt_bool_t tried = RT_FALSE;
+
+    if (!tried) {
+        acce_dev = rt_device_find("acce_lsm6dsl");
+        if (acce_dev != RT_NULL) {
+            if (rt_device_open(acce_dev, RT_DEVICE_FLAG_RDONLY) != RT_EOK) {
+                acce_dev = RT_NULL;
+            }
+        }
+        tried = RT_TRUE;
+    }
+
+    if (acce_dev != RT_NULL) {
+        /* Read multiple samples to fill the buffer */
+        for (uint16_t i = 0; i < gsensor_max_len; i++) {
+            struct rt_sensor_data sensor_data;
+            rt_size_t res = rt_device_read(acce_dev, 0, &sensor_data, 1);
+            if (res == 1) {
+                gsensor_buffer[i].sXAxisVal = (GS16)sensor_data.data.acce.x;
+                gsensor_buffer[i].sYAxisVal = (GS16)sensor_data.data.acce.y;
+                gsensor_buffer[i].sZAxisVal = (GS16)sensor_data.data.acce.z;
+            } else {
+                /* If read fails, fill with zeros */
+                gsensor_buffer[i].sXAxisVal = 0;
+                gsensor_buffer[i].sYAxisVal = 0;
+                gsensor_buffer[i].sZAxisVal = 0;
+            }
+        }
+        *gsensor_buffer_index = gsensor_max_len;
+        return;
+    }
+#endif
+    /* Fallback: no G-sensor available, fill with zeros */
+    for (uint16_t i = 0; i < gsensor_max_len; i++) {
+        gsensor_buffer[i].sXAxisVal = 0;
+        gsensor_buffer[i].sYAxisVal = 0;
+        gsensor_buffer[i].sZAxisVal = 0;
+    }
+    *gsensor_buffer_index = gsensor_max_len;
 #endif
     /**************************** WARNNING: DO NOT REMOVE OR MODIFY THIS CODE
      * ---START***************************************************/
@@ -414,6 +463,38 @@ void gsensor_drv_get_data(ST_GS_DATA_TYPE *gsensor_data_ptr)
         gsensor_fifo_buffer[gsensor_fifo_buffer_index][1];
     gsensor_data_ptr->sZAxisVal =
         gsensor_fifo_buffer[gsensor_fifo_buffer_index][2];
+#else
+    /* LSM6DSL G-sensor integration via RT-Thread sensor framework */
+#ifdef RT_USING_SENSOR
+    static rt_device_t acce_dev = RT_NULL;
+    static rt_bool_t tried = RT_FALSE;
+
+    if (!tried) {
+        acce_dev = rt_device_find("acce_lsm6dsl");
+        if (acce_dev != RT_NULL) {
+            if (rt_device_open(acce_dev, RT_DEVICE_FLAG_RDONLY) != RT_EOK) {
+                acce_dev = RT_NULL;
+            }
+        }
+        tried = RT_TRUE;
+    }
+
+    if (acce_dev != RT_NULL) {
+        struct rt_sensor_data sensor_data;
+        rt_size_t res = rt_device_read(acce_dev, 0, &sensor_data, 1);
+        if (res == 1) {
+            /* LSM6DSL returns acceleration in mg, GS16 can hold ±32767 */
+            gsensor_data_ptr->sXAxisVal = (GS16)sensor_data.data.acce.x;
+            gsensor_data_ptr->sYAxisVal = (GS16)sensor_data.data.acce.y;
+            gsensor_data_ptr->sZAxisVal = (GS16)sensor_data.data.acce.z;
+            return;
+        }
+    }
+#endif
+    /* Fallback: no G-sensor available, return zero */
+    gsensor_data_ptr->sXAxisVal = 0;
+    gsensor_data_ptr->sYAxisVal = 0;
+    gsensor_data_ptr->sZAxisVal = 0;
 #endif
 }
 
@@ -436,7 +517,7 @@ void hal_gh30x_int_handler_bottom_half(void)
 #ifdef GH3018_USE_INT
 static void gh30x_int_handle(void *args)
 {
-    LOG_D("gh30x_int_handle\n");
+    // LOG_D("gh30x_int_handle\n");
     #ifdef GH3018_USE_INT
 
         #ifdef GH3018_INT_BIT
@@ -458,17 +539,17 @@ static void gh30x_sensor_task(void *params)
     {
 #ifdef GH3018_USE_INT
         rt_sem_take(&gh3018_int_sem, RT_WAITING_FOREVER);
-        LOG_D("gh30x_sensor_task: Got semaphore.");
+        // LOG_D("gh30x_sensor_task: Got semaphore.");
 #else
         rt_thread_mdelay(PERIOD_IN_FREQUENCY_25HZ);
 #endif
         gh30x_api_lock();
-        LOG_D("gh30x_sensor_task: Acquired lock.");
+        // LOG_D("gh30x_sensor_task: Acquired lock.");
         // LOG_I("gh30x_sensor_task");
         hal_gh30x_int_handler_bottom_half();
-        LOG_D("gh30x_sensor_task: Data handling finished.");
+        // LOG_D("gh30x_sensor_task: Data handling finished.");
         gh30x_api_unlock();
-        LOG_D("gh30x_sensor_task: Released lock.");
+        // LOG_D("gh30x_sensor_task: Released lock.");
 #ifdef GH3018_USE_INT
     #ifdef GH3018_INT_BIT
         rt_pin_irq_enable(GH3018_INT_BIT, 1);
@@ -476,8 +557,8 @@ static void gh30x_sensor_task(void *params)
         rt_pin_irq_enable(PPG_INT_PIN, 1);
     #endif
 #endif
-        LOG_D(
-            "gh30x_sensor_task: IRQ re-enabled. Waiting for next interrupt...");
+        // LOG_D(
+        //     "gh30x_sensor_task: IRQ re-enabled. Waiting for next interrupt...");
     }
 }
 /// gh30x int pin init, should config as rise edge trigger

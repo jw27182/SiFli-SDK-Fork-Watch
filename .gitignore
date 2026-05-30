@@ -24,3 +24,4 @@ _*/
 compile_commands.json
 app/watch/src/gui_apps/eez/*.c
 app/watch/src/gui_apps/eez/*.h
+tmp
