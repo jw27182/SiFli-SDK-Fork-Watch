@@ -14,6 +14,7 @@
 #include "gh30x_demo_algo_call.h"
 #include "gh30x_demo_algo_config.h"
 #include "gh30x_hr_ui_notify.h"
+#include "heart_rate_mq.h"
 #include <rtthread.h>
 
 extern void gh3018_set_hr(uint32_t hr);
@@ -58,9 +59,37 @@ void Gh30xInitHookFunc(void)
 #endif
 }
 
+extern GU8 g_uchNeedReadRawdataCount;  /* 通道数（1 或 2），定义于 gh30x_example_ctrl.c */
+
 void Gh30xGetRawdataHookFunc(GU32 *read_buffer_ptr, GU16 length)
 {
-    /* code implement by user */
+    /* 从双通道交错缓冲区提取 Ch1（Phase0/绿色 LED）PPG 原始数据，
+     * 逐点发送到 PPG 消息队列，供 ECG 波形 UI 消费。
+     *
+     * 数据格式：
+     *   - 单通道：read_buffer_ptr[i] 每个元素为一个采样点
+     *   - 双通道：偶数索引 = Ch1，奇数索引 = Ch2
+     *   - length = 总采样点数（双通道时 = 2 × 每通道帧数）
+     */
+
+    if (read_buffer_ptr == NULL || length == 0u) return;
+
+    GU8 chnl = g_uchNeedReadRawdataCount;
+    GU16 frame_count;
+
+    if (chnl <= 1u) {
+        /* 单通道：所有采样点都是 Ch1 */
+        frame_count = length;
+    } else {
+        /* 双通道：每帧含 Ch1+Ch2，步进 2 取 Ch1 */
+        frame_count = length / 2u;
+    }
+
+    for (GU16 i = 0; i < frame_count; i++) {
+        GU32 raw = (chnl <= 1u) ? read_buffer_ptr[i] : read_buffer_ptr[i * 2u];
+        int32_t ppg = (int32_t)((raw >> 7) & 0x1FFFF);
+        ppg_mq_send(ppg);
+    }
 }
 
 /**

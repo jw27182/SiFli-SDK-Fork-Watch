@@ -41,6 +41,10 @@ static void hr_mq_bridge(const gh30x_hr_ui_sample_t *sample)
 
 #endif
 
+#ifdef HR_USING_GH3018
+static rt_mq_t s_ppg_mq;
+#endif
+
 int heart_rate_mq_init(void)
 {
 #ifdef HR_USING_GH3018
@@ -50,6 +54,9 @@ int heart_rate_mq_init(void)
     if (s_hr_mq == RT_NULL) return -RT_ENOMEM;
 
     gh30x_hr_ui_notify_register(hr_mq_bridge);
+
+    /* PPG 波形消息队列：深度 64，每个消息 4 字节 int32_t */
+    s_ppg_mq = rt_mq_create("ppg_ui", sizeof(ppg_sample_t), 64, RT_IPC_FLAG_FIFO);
 #endif
     return RT_EOK;
 }
@@ -78,6 +85,43 @@ void heart_rate_mq_flush(void)
                    (unsigned long)flushed);
 #endif
     }
+#endif
+}
+
+/* ========== PPG 波形消息队列接口 ========== */
+
+rt_mq_t ppg_mq_get(void)
+{
+#ifdef HR_USING_GH3018
+    return s_ppg_mq;
+#else
+    return RT_NULL;
+#endif
+}
+
+void ppg_mq_flush(void)
+{
+#ifdef HR_USING_GH3018
+    if (s_ppg_mq == RT_NULL) return;
+    ppg_sample_t dummy;
+    rt_uint32_t flushed = 0;
+    while (rt_mq_recv(s_ppg_mq, &dummy, sizeof(dummy), 0) == RT_EOK) {
+        flushed++;
+    }
+    if (flushed > 0) {
+        rt_kprintf("[DBG_MQ] ppg_mq_flush: %lu stale samples discarded\r\n",
+                   (unsigned long)flushed);
+    }
+#endif
+}
+
+void ppg_mq_send(int32_t ppg_value)
+{
+#ifdef HR_USING_GH3018
+    if (s_ppg_mq == RT_NULL) return;
+    ppg_sample_t s;
+    s.ppg_value = ppg_value;
+    rt_mq_send(s_ppg_mq, &s, sizeof(s));
 #endif
 }
 

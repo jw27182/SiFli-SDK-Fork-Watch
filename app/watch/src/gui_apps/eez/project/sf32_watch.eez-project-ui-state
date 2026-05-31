@@ -1,9 +1,9 @@
 {
   "navigation": {
-    "selectedUserPageObject": "[sf32_watch.eez-project]:/userPages/0",
+    "selectedUserPageObject": "[sf32_watch.eez-project]:/userPages/2",
     "selectedActionObject": "[sf32_watch.eez-project]:/actions/9",
     "selectedFontObject": "[sf32_watch.eez-project]:/fonts/0",
-    "selectedBitmapObject": "[sf32_watch.eez-project]:/bitmaps/5",
+    "selectedBitmapObject": "[sf32_watch.eez-project]:/bitmaps/10",
     "subnavigationSelectedItems": {}
   },
   "layoutModel": {
@@ -24,7 +24,7 @@
           },
           {
             "type": "border",
-            "selected": 1,
+            "selected": 2,
             "size": 240,
             "location": "right",
             "children": [
@@ -192,7 +192,6 @@
               "type": "tabset",
               "id": "EDITORS",
               "weight": 47.23544286275617,
-              "selected": 3,
               "enableDeleteWhenEmpty": false,
               "enableClose": false,
               "children": [
@@ -1236,5 +1235,5 @@
   "globalFlowZoom": true,
   "flowZoom": 0.9,
   "implementationLanguage": "C",
-  "openDialogDefaultPath": "D:\\University\\毕设\\icon\\img_temperature_icon.png"
+  "openDialogDefaultPath": "D:\\University\\毕设\\icon\\img_satellite_icon.png"
 }
