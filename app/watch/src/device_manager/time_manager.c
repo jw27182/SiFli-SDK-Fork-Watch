@@ -16,29 +16,20 @@ rt_err_t dm_set_date_time(dm_date_time_t dt)
 {
     time_t now;
     rt_device_t device;
-    struct tm *p_tm;
     struct tm tm_new = {0};
 
-    /* Get current time (calendar time). */
-    now = time(RT_NULL);
+    /* 直接构造 struct tm，仅填用户提供的 6 个字段，
+     * 避免从 localtime() 拷贝 stale 的 tm_isdst/tm_gmtoff 等内部字段，
+     * 这些字段在不同 libc（newlib/minilibc）中的行为不一致会导致时间偏移。 */
+    tm_new.tm_year  = dt.year  - 1900;
+    tm_new.tm_mon   = dt.month - 1;
+    tm_new.tm_mday  = dt.day;
+    tm_new.tm_hour  = dt.hour;
+    tm_new.tm_min   = dt.minute;
+    tm_new.tm_sec   = dt.second;
+    tm_new.tm_isdst = -1;  /* 让 mktime 自动判断夏令时 */
 
-    /* Lock scheduler */
-    rt_enter_critical();
-    /* Convert calendar time to local time. */
-    p_tm = localtime(&now);
-    /* Copy time */
-    memcpy(&tm_new, p_tm, sizeof(struct tm));
-    /* Unlock scheduler */
-    rt_exit_critical();
-
-    /* Update system time. */
-    tm_new.tm_year = dt.year  - 1900;
-    tm_new.tm_mon  = dt.month - 1;
-    tm_new.tm_mday = dt.day;
-    tm_new.tm_hour = dt.hour;
-    tm_new.tm_min = dt.minute;
-    tm_new.tm_sec = dt.second;
-    /* Convert local time to calendar time. */
+    /* Convert local time to calendar time (UTC epoch). */
     now = mktime(&tm_new);
 
     /* Find RTC device. */

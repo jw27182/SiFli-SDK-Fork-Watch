@@ -284,8 +284,8 @@ static int nmea_reader_update_cdate(NmeaReader *r, Token tok_d, Token tok_m,
         return -1;
 
     r->utc_time.tm_mday = str2int(tok_d.p, tok_d.p + 2);
-    r->utc_time.tm_mon = str2int(tok_m.p, tok_m.p + 2);
-    r->utc_time.tm_year = str2int(tok_y.p, tok_y.end + 4);
+    r->utc_time.tm_mon  = str2int(tok_m.p, tok_m.p + 2) - 1;       /* struct tm: 0=Jan */
+    r->utc_time.tm_year = str2int(tok_y.p, tok_y.p + 4) - 1900;    /* struct tm: years since 1900 */
 
     return 0;
 }
@@ -307,8 +307,8 @@ static int nmea_reader_update_date(NmeaReader *r, Token date, Token mtime) {
         return -1;
     }
 
-    r->utc_time.tm_year = year;
-    r->utc_time.tm_mon = mon;
+    r->utc_time.tm_year = year - 1900;   /* struct tm: years since 1900 */
+    r->utc_time.tm_mon  = mon - 1;       /* struct tm: 0=Jan */
     r->utc_time.tm_mday = day;
 
     return nmea_reader_update_time(r, mtime);

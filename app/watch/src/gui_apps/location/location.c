@@ -436,8 +436,8 @@ static void timer_callback(lv_timer_t *timer)
 
         lv_label_set_text_fmt(objects.label_gps_utc_time,
                               "%04d-%02d-%02d %02d:%02d:%02d",
-                              gps_data.location_data.timestamp.tm_year,
-                              gps_data.location_data.timestamp.tm_mon,
+                              gps_data.location_data.timestamp.tm_year + 1900,
+                              gps_data.location_data.timestamp.tm_mon + 1,
                               gps_data.location_data.timestamp.tm_mday,
                               gps_data.location_data.timestamp.tm_hour,
                               gps_data.location_data.timestamp.tm_min,

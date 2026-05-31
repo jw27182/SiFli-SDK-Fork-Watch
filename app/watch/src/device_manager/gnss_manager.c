@@ -38,8 +38,9 @@ static rt_bool_t gnss_time_is_valid(const GpsData *gps_data) {
     if (!gps_data) return RT_FALSE;
     utc = &gps_data->location_data.timestamp;
 
-    if (utc->tm_year < 2020 || utc->tm_year > 2100) return RT_FALSE;
-    if (utc->tm_mon < 1 || utc->tm_mon > 12) return RT_FALSE;
+    /* struct tm 标准语义：tm_year = years since 1900, tm_mon = 0..11 */
+    if (utc->tm_year + 1900 < 2020 || utc->tm_year + 1900 > 2100) return RT_FALSE;
+    if (utc->tm_mon < 0 || utc->tm_mon > 11) return RT_FALSE;
     if (utc->tm_mday < 1 || utc->tm_mday > 31) return RT_FALSE;
     if (utc->tm_hour < 0 || utc->tm_hour > 23) return RT_FALSE;
     if (utc->tm_min < 0 || utc->tm_min > 59) return RT_FALSE;
@@ -86,9 +87,9 @@ static void gnss_sync_timer_cb(lv_timer_t *timer) {
     memset(&gps_data, 0, sizeof(gps_data));
     if (um_gps_get_data(RT_NULL, RT_NULL, RT_NULL, &gps_data) == 0 &&
         gnss_time_is_valid(&gps_data)) {
-        dt_set.year = gps_data.location_data.timestamp.tm_year;
-        dt_set.month = gps_data.location_data.timestamp.tm_mon;
-        dt_set.day = gps_data.location_data.timestamp.tm_mday;
+        dt_set.year   = gps_data.location_data.timestamp.tm_year + 1900;
+        dt_set.month  = gps_data.location_data.timestamp.tm_mon + 1;
+        dt_set.day    = gps_data.location_data.timestamp.tm_mday;
         dt_set.hour = gps_data.location_data.timestamp.tm_hour;
         dt_set.minute = gps_data.location_data.timestamp.tm_min;
         dt_set.second = gps_data.location_data.timestamp.tm_sec;
